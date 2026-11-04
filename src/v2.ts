@@ -648,8 +648,13 @@ export const AntigravityV2Plugin = Plugin.define({
         }
         await ctx.provider.reload()
       }, runCredentialOperation))
-      if (hasSavedAccounts && ctx.options.discoverModels !== false && (!validCache || Date.now() - (cached?.updatedAt ?? 0) > 3600_000)) {
-        try { await refreshModels() } catch (error) { log.warn("Model discovery unavailable; using cached or fallback models", { error: String(error) }) }
+      if (hasSavedAccounts && ctx.options.discoverModels !== false) {
+        if (!validCache) {
+          try { await refreshModels() } catch (error) { log.warn("Model discovery unavailable; using cached or fallback models", { error: String(error) }) }
+        } else if (Date.now() - (cached?.updatedAt ?? 0) > 3600_000) {
+          // If valid cached models already exist, refresh quota in the background without blocking plugin setup
+          void refreshModels().catch((error) => log.warn("Background model refresh failed", { error: String(error) }))
+        }
       }
       return cleanup
     } catch (error) {

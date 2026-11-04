@@ -2406,6 +2406,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   }
                 }
                 
+                let streamToTransform = response;
                 // Empty response retry logic (ported from LLM-API-Key-Proxy)
                 // For non-streaming responses, check if the response body is empty
                 // and retry if so (up to config.empty_response_max_attempts times)
@@ -2447,9 +2448,74 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   const emptyAttemptKeyClean = `${prepared.sessionId ?? "none"}:${prepared.effectiveModel ?? "unknown"}`;
                   emptyResponseAttempts.delete(emptyAttemptKeyClean);
                 }
+
+                // For streaming responses, inspect initial chunk to catch 0-token empty candidate drops
+                if (response.ok && prepared.streaming && response.body) {
+                  const maxAttempts = config.empty_response_max_attempts ?? 4;
+                  const retryDelayMs = config.empty_response_retry_delay_ms ?? 2000;
+                  const reader = response.body.getReader();
+                  const { value, done } = await reader.read();
+                  let isStreamEmpty = false;
+
+                  if (done && (!value || value.length === 0)) {
+                    isStreamEmpty = true;
+                  } else if (value) {
+                    const chunkText = new TextDecoder().decode(value);
+                    if (chunkText.includes('"candidates"') && chunkText.includes('"finishReason":"STOP"')) {
+                      if (chunkText.includes('"parts":[]') || !chunkText.includes('"parts":')) {
+                        isStreamEmpty = true;
+                      }
+                    }
+                  }
+
+                  if (isStreamEmpty) {
+                    reader.releaseLock();
+                    const emptyAttemptKey = `${prepared.sessionId ?? "none"}:${prepared.effectiveModel ?? "unknown"}`;
+                    const currentAttempts = (emptyResponseAttempts.get(emptyAttemptKey) ?? 0) + 1;
+                    emptyResponseAttempts.set(emptyAttemptKey, currentAttempts);
+                    pushDebug(`empty-streaming-response: attempt ${currentAttempts}/${maxAttempts}`);
+                    if (currentAttempts < maxAttempts) {
+                      await showToast(
+                        `Empty response from model. Retrying (${currentAttempts}/${maxAttempts})...`,
+                        "warning"
+                      );
+                      await sleep(retryDelayMs, abortSignal);
+                      continue; // Retry the endpoint loop
+                    }
+                    emptyResponseAttempts.delete(emptyAttemptKey);
+                    throw new EmptyResponseError(
+                      "antigravity",
+                      prepared.effectiveModel ?? "unknown",
+                      currentAttempts,
+                    );
+                  }
+
+                  const emptyAttemptKeyClean = `${prepared.sessionId ?? "none"}:${prepared.effectiveModel ?? "unknown"}`;
+                  emptyResponseAttempts.delete(emptyAttemptKeyClean);
+
+                  const reconstructedStream = new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      if (value) controller.enqueue(value);
+                    },
+                    async pull(controller) {
+                      const { value: nextValue, done: nextDone } = await reader.read();
+                      if (nextDone) controller.close();
+                      else controller.enqueue(nextValue);
+                    },
+                    cancel(reason) {
+                      return reader.cancel(reason);
+                    },
+                  });
+
+                  streamToTransform = new Response(reconstructedStream, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers,
+                  });
+                }
                 
                 const transformedResponse = await transformAntigravityResponse(
-                  response,
+                  streamToTransform,
                   prepared.streaming,
                   debugContext,
                   prepared.requestedModel,
