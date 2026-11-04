@@ -336,8 +336,14 @@ describe("Issue #103: resolveModelForHeaderStyle", () => {
 describe("advertised tier-suffix model IDs", () => {
   const advertised = [
     "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-low",
     "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-low",
     "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-4-argon-low",
     "gemini-3.8-flash-high",
     "gpt-oss-120b-medium",
   ];
