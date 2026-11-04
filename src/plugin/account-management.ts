@@ -52,12 +52,15 @@ export async function registerAccountManagement(
   async function list(): Promise<AccountSummary[]> {
     const storage = await readAccounts()
     if (!storage) return []
-    return storage.accounts.map((account, index) => ({
-      id: accountID(account), email: account.email ?? `Account ${index + 1}`,
-      enabled: account.enabled !== false, current: index === storage.activeIndex,
-      verificationRequired: account.verificationRequired === true, lastUsed: account.lastUsed ?? 0,
-      quota: summarizeCachedQuota(account),
-    }))
+    return storage.accounts.map((account, index) => {
+      const quota = summarizeCachedQuota(account)
+      return {
+        id: accountID(account), email: account.email ?? `Account ${index + 1}`,
+        enabled: account.enabled !== false, current: index === storage.activeIndex,
+        verificationRequired: account.verificationRequired === true, lastUsed: account.lastUsed ?? 0,
+        ...(quota ? { quota } : {}),
+      }
+    })
   }
 
   // Resolving a native connection may refresh OAuth. Do this only for explicit

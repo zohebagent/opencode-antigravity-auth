@@ -33,6 +33,7 @@ const API_KEY_SENTINEL = "antigravity-oauth"
 const ownsModel = (id: string) => id.startsWith("antigravity-")
 type Registration = { dispose(): Promise<void> }
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+let activeCredentialRunner: (<T>(operation: () => Promise<T>) => Promise<T>) | undefined
 
 function mergeBody(base: Record<string, unknown>, overlay: Record<string, unknown>): Record<string, unknown> {
   const result = { ...base }
@@ -194,12 +195,18 @@ export const AntigravityV2Plugin = Plugin.define({
     let disposed = false
     const credentialOperations = new Set<Promise<unknown>>()
     const runCredentialOperation = <T>(operation: () => Promise<T>): Promise<T> => {
-      if (disposed) return Promise.reject(new Error("Antigravity plugin has been disposed"))
+      if (disposed) {
+        if (activeCredentialRunner && activeCredentialRunner !== runCredentialOperation) {
+          return activeCredentialRunner(operation)
+        }
+        return Promise.reject(new Error("Antigravity plugin has been disposed"))
+      }
       const running = operation()
       credentialOperations.add(running)
       void running.then(() => credentialOperations.delete(running), () => credentialOperations.delete(running))
       return running
     }
+    activeCredentialRunner = runCredentialOperation
     let loader: LoaderResult | undefined
     let loaderIdentity: string | undefined
     let generation = 0
@@ -386,7 +393,7 @@ export const AntigravityV2Plugin = Plugin.define({
     }
 
     const scopedFetch = (fallback: unknown, body?: Model.Info["body"]): Fetch => (input, init) => runCredentialOperation(async () => {
-      if (disposed) throw new Error("Antigravity plugin has been disposed")
+      if (disposed && (!activeCredentialRunner || activeCredentialRunner === runCredentialOperation)) throw new Error("Antigravity plugin has been disposed")
       const original: Fetch = typeof fallback === "function" ? fallback as Fetch : globalThis.fetch
       if (!await currentAuth()) throw new Error("Connect Google with Antigravity OAuth and enable an account to use this model")
       if (body && typeof init?.body === "string") {
@@ -405,6 +412,9 @@ export const AntigravityV2Plugin = Plugin.define({
     const cleanup = () => {
       if (cleaning) return cleaning
       disposed = true
+      if (activeCredentialRunner === runCredentialOperation) {
+        activeCredentialRunner = undefined
+      }
       cleaning = Promise.resolve().then(async () => {
         lifetime.abort(new Error("Antigravity plugin disposed"))
         await Promise.allSettled([...listeners].map((listener) => listener.close()))
