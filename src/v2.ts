@@ -34,6 +34,7 @@ const ownsModel = (id: string) => id.startsWith("antigravity-")
 type Registration = { dispose(): Promise<void> }
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 let activeCredentialRunner: (<T>(operation: () => Promise<T>) => Promise<T>) | undefined
+let activeLoader: (() => Promise<LoaderResult>) | undefined
 
 function mergeBody(base: Record<string, unknown>, overlay: Record<string, unknown>): Record<string, unknown> {
   const result = { ...base }
@@ -334,7 +335,12 @@ export const AntigravityV2Plugin = Plugin.define({
     }
 
     const getLoader = async (): Promise<LoaderResult> => {
-      if (disposed) throw new Error("Antigravity plugin has been disposed")
+      if (disposed) {
+        if (activeLoader && activeLoader !== getLoader) {
+          return activeLoader()
+        }
+        throw new Error("Antigravity plugin has been disposed")
+      }
       const resolved = await resolveAuth()
       if (!resolved) throw new Error("Connect Google with Antigravity OAuth to use this model")
       const { auth, identity } = resolved
@@ -381,7 +387,12 @@ export const AntigravityV2Plugin = Plugin.define({
           throw error
         }
         if (typeof result.fetch !== "function") throw new Error("Antigravity OAuth is unavailable")
-        if (disposed) throw new Error("Antigravity plugin has been disposed")
+        if (disposed) {
+          if (activeLoader && activeLoader !== getLoader) {
+            return activeLoader()
+          }
+          throw new Error("Antigravity plugin has been disposed")
+        }
         if (generation !== expectedGeneration) return undefined
         loader = result as LoaderResult
         loaderIdentity = identity
@@ -391,6 +402,7 @@ export const AntigravityV2Plugin = Plugin.define({
       try { result = await loading } finally { loading = undefined }
       return result ?? getLoader()
     }
+    activeLoader = getLoader
 
     const scopedFetch = (fallback: unknown, body?: Model.Info["body"]): Fetch => (input, init) => runCredentialOperation(async () => {
       if (disposed && (!activeCredentialRunner || activeCredentialRunner === runCredentialOperation)) throw new Error("Antigravity plugin has been disposed")
@@ -399,10 +411,12 @@ export const AntigravityV2Plugin = Plugin.define({
       if (body && typeof init?.body === "string") {
         init = { ...init, body: JSON.stringify(mergeBody(JSON.parse(init.body) as Record<string, unknown>, body)) }
       }
-      const interceptor = await getLoader()
+      const interceptor = (disposed && activeLoader && activeLoader !== getLoader)
+        ? await activeLoader()
+        : await getLoader()
+      const isForwarded = disposed && activeCredentialRunner && activeCredentialRunner !== runCredentialOperation
       const signal = AbortSignal.any([
-        lifetime.signal,
-        requestLifetime.signal,
+        ...(!isForwarded ? [lifetime.signal, requestLifetime.signal] : []),
         ...(init?.signal ? [init.signal] : input instanceof Request ? [input.signal] : []),
       ])
       return outbound.run(original, () => interceptor.fetch(input instanceof URL ? input.toString() : input, { ...init, signal }))
@@ -414,6 +428,9 @@ export const AntigravityV2Plugin = Plugin.define({
       disposed = true
       if (activeCredentialRunner === runCredentialOperation) {
         activeCredentialRunner = undefined
+      }
+      if (activeLoader === getLoader) {
+        activeLoader = undefined
       }
       cleaning = Promise.resolve().then(async () => {
         lifetime.abort(new Error("Antigravity plugin disposed"))
