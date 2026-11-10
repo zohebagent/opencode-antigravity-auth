@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -10,12 +10,14 @@ const FALLBACK_PROJECT_ID = "bamboo-precept-lgxtn";
 
 function getDefaultAccountsPath() {
   if (process.env.OPENCODE_CONFIG_DIR) return join(process.env.OPENCODE_CONFIG_DIR, "antigravity-accounts.json");
+  const xdgConfig = join(homedir(), ".config", "opencode", "antigravity-accounts.json");
+  if (existsSync(xdgConfig)) return xdgConfig;
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(appData, "opencode", "antigravity-accounts.json");
+    const appDataConfig = join(appData, "opencode", "antigravity-accounts.json");
+    if (existsSync(appDataConfig)) return appDataConfig;
   }
-  const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(xdgConfig, "opencode", "antigravity-accounts.json");
+  return xdgConfig;
 }
 
 function parseArgs() {
@@ -142,7 +144,16 @@ function printGroup(label, entry) {
   const status = remaining === null ? "UNKNOWN" : remaining <= 0 ? "LIMITED" : "OK";
   const details = [];
   if (remaining !== null) details.push(`remaining ${remaining}%`);
-  if (entry.resetTime) {
+  if (entry.weeklyRemaining !== undefined) {
+    const weeklyPct = Math.round(entry.weeklyRemaining * 100);
+    const weeklyTime = entry.weeklyResetTime ? `, resets in ${formatDuration(Date.parse(entry.weeklyResetTime))}` : "";
+    details.push(`weekly ${weeklyPct}%${weeklyTime}`);
+  }
+  if (entry.fiveHourRemaining !== undefined) {
+    const fiveHourPct = Math.round(entry.fiveHourRemaining * 100);
+    const fiveHourTime = entry.fiveHourResetTime ? `, resets in ${formatDuration(Date.parse(entry.fiveHourResetTime))}` : "";
+    details.push(`5h ${fiveHourPct}%${fiveHourTime}`);
+  } else if (entry.resetTime && entry.weeklyRemaining === undefined) {
     const time = formatDuration(Date.parse(entry.resetTime));
     details.push(`resets in ${time}`);
   }
@@ -180,20 +191,22 @@ async function run() {
       console.log(`   project: ${projectId}`);
 
       const body = projectId ? { project: projectId } : {};
-      const response = await postJson(
-        `${CLOUD_CODE_BASE}/v1internal:fetchAvailableModels`,
-        accessToken,
-        body,
-      );
-      console.log(`   fetchAvailableModels: ${response.status}`);
+      const [modelsResp, userQuotaResp] = await Promise.all([
+        postJson(`${CLOUD_CODE_BASE}/v1internal:fetchAvailableModels`, accessToken, body),
+        postJson(`${CLOUD_CODE_BASE}/v1internal:retrieveUserQuotaSummary`, accessToken, body).catch(() => null),
+      ]);
+      console.log(`   fetchAvailableModels: ${modelsResp.status}`);
+      if (userQuotaResp) {
+        console.log(`   retrieveUserQuotaSummary: ${userQuotaResp.status}`);
+      }
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
+      if (!modelsResp.ok) {
+        const text = await modelsResp.text().catch(() => "");
         console.log(`   error: ${text.trim().slice(0, 200)}`);
         continue;
       }
 
-      const data = await response.json();
+      const data = await modelsResp.json();
       const groups = {};
       const models = data.models || {};
       for (const [modelName, info] of Object.entries(models)) {
@@ -202,6 +215,36 @@ async function run() {
         if (!info || !info.quotaInfo) continue;
         const remaining = info.quotaInfo.remainingFraction ?? 0;
         updateGroup(groups, group, remaining, info.quotaInfo.resetTime);
+      }
+
+      if (userQuotaResp && userQuotaResp.ok) {
+        const uqData = await userQuotaResp.json().catch(() => null);
+        for (const uqGroup of uqData?.groups || []) {
+          const buckets = uqGroup.buckets || [];
+          let weeklyBucket = buckets.find(b => (b.window || "").toLowerCase() === "weekly" || (b.bucketId || "").toLowerCase().includes("weekly"));
+          let fiveHourBucket = buckets.find(b => (b.window || "").toLowerCase() === "5h" || (b.bucketId || "").toLowerCase().includes("5h"));
+
+          const groupName = (uqGroup.displayName || "").toLowerCase();
+          const targetGroups = [];
+          if (groupName.includes("gemini")) targetGroups.push("gemini-pro", "gemini-flash");
+          if (groupName.includes("claude") || groupName.includes("gpt")) targetGroups.push("claude");
+
+          for (const target of targetGroups) {
+            const entry = groups[target] || { count: 1 };
+            if (weeklyBucket && typeof weeklyBucket.remainingFraction === "number") {
+              entry.weeklyRemaining = weeklyBucket.remainingFraction;
+              entry.weeklyResetTime = weeklyBucket.resetTime;
+            }
+            if (fiveHourBucket && typeof fiveHourBucket.remainingFraction === "number") {
+              entry.fiveHourRemaining = fiveHourBucket.remainingFraction;
+              entry.fiveHourResetTime = fiveHourBucket.resetTime;
+            }
+            if (entry.weeklyRemaining !== undefined && entry.fiveHourRemaining !== undefined) {
+              entry.remaining = Math.min(entry.weeklyRemaining, entry.fiveHourRemaining);
+            }
+            groups[target] = entry;
+          }
+        }
       }
 
       printGroup("Claude", groups["claude"]);

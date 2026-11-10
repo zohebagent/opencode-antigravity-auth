@@ -22,6 +22,10 @@ export interface QuotaGroupSummary {
   resetTime?: string;
   /** Reset belonging to the model that supplies remainingFraction. */
   remainingFractionResetTime?: string;
+  weeklyRemainingFraction?: number;
+  weeklyResetTime?: string;
+  fiveHourRemainingFraction?: number;
+  fiveHourResetTime?: string;
   modelCount: number;
 }
 
@@ -30,6 +34,27 @@ export interface QuotaSummary {
   modelCount: number;
   models?: Record<string, AvailableModel>;
   error?: string;
+}
+
+// User quota summary types (weekly & 5-hour limits)
+export interface UserQuotaBucket {
+  bucketId?: string;
+  displayName?: string;
+  window?: "weekly" | "5h" | string;
+  resetTime?: string;
+  remainingFraction?: number;
+  description?: string;
+}
+
+export interface UserQuotaGroup {
+  displayName?: string;
+  description?: string;
+  buckets?: UserQuotaBucket[];
+}
+
+export interface RetrieveUserQuotaSummaryResponse {
+  groups?: UserQuotaGroup[];
+  description?: string;
 }
 
 // Gemini CLI quota types
@@ -63,6 +88,7 @@ export interface AccountQuotaResult {
   error?: string;
   disabled?: boolean;
   quota?: QuotaSummary;
+  userQuotaSummary?: RetrieveUserQuotaSummaryResponse;
   geminiCliQuota?: GeminiCliQuotaSummary;
   updatedAccount?: AccountMetadataV3;
 }
@@ -295,6 +321,133 @@ async function fetchGeminiCliQuota(
   }
 }
 
+export async function fetchUserQuotaSummary(
+  accessToken: string,
+  projectId: string,
+): Promise<RetrieveUserQuotaSummaryResponse> {
+  const endpoints = [ANTIGRAVITY_ENDPOINT, ANTIGRAVITY_ENDPOINT_PROD];
+  const quotaUserAgent = getAntigravityUserAgent();
+  const body = projectId ? { project: projectId } : {};
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchWithTimeout(`${endpoint}/v1internal:retrieveUserQuotaSummary`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": quotaUserAgent,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as RetrieveUserQuotaSummaryResponse;
+        if (data.groups && data.groups.length > 0) {
+          return data;
+        }
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  return { groups: [] };
+}
+
+export function applyUserQuotaSummary(
+  groups: Partial<Record<QuotaGroup, QuotaGroupSummary>>,
+  summary?: RetrieveUserQuotaSummaryResponse,
+): void {
+  if (!summary?.groups || summary.groups.length === 0) return;
+
+  for (const group of summary.groups) {
+    const buckets = group.buckets ?? [];
+    let weeklyBucket: UserQuotaBucket | undefined;
+    let fiveHourBucket: UserQuotaBucket | undefined;
+
+    for (const b of buckets) {
+      const windowType = (b.window || "").toLowerCase();
+      const id = (b.bucketId || "").toLowerCase();
+      if (windowType === "weekly" || id.includes("weekly")) {
+        weeklyBucket = b;
+      } else if (windowType === "5h" || id.includes("5h")) {
+        fiveHourBucket = b;
+      }
+    }
+
+    // Determine target QuotaGroups
+    const name = (group.displayName || "").toLowerCase();
+    const desc = (group.description || "").toLowerCase();
+    const targetGroups: QuotaGroup[] = [];
+
+    if (name.includes("gemini") || desc.includes("gemini")) {
+      targetGroups.push("gemini-pro", "gemini-flash");
+    }
+    if (name.includes("claude") || name.includes("gpt") || desc.includes("claude") || desc.includes("gpt")) {
+      targetGroups.push("claude");
+    }
+    if (name.includes("argon") || desc.includes("argon")) {
+      targetGroups.push("argon");
+    }
+
+    const weeklyRemaining = weeklyBucket?.remainingFraction !== undefined
+      ? normalizeRemainingFraction(weeklyBucket.remainingFraction)
+      : undefined;
+    const weeklyReset = weeklyBucket?.resetTime;
+    const fiveHourRemaining = fiveHourBucket?.remainingFraction !== undefined
+      ? normalizeRemainingFraction(fiveHourBucket.remainingFraction)
+      : undefined;
+    const fiveHourReset = fiveHourBucket?.resetTime;
+
+    for (const target of targetGroups) {
+      const existing = groups[target];
+      if (existing) {
+        if (weeklyRemaining !== undefined) {
+          existing.weeklyRemainingFraction = weeklyRemaining;
+          existing.weeklyResetTime = weeklyReset;
+        }
+        if (fiveHourRemaining !== undefined) {
+          existing.fiveHourRemainingFraction = fiveHourRemaining;
+          existing.fiveHourResetTime = fiveHourReset;
+        }
+
+        // Determine effective remaining fraction: bottleneck of weekly & 5h limits
+        if (weeklyRemaining !== undefined && fiveHourRemaining !== undefined) {
+          const bottleneck = Math.min(weeklyRemaining, fiveHourRemaining);
+          existing.remainingFraction = bottleneck;
+          if (bottleneck === weeklyRemaining && weeklyRemaining < fiveHourRemaining) {
+            existing.resetTime = weeklyReset;
+            existing.remainingFractionResetTime = weeklyReset;
+          } else if (bottleneck === fiveHourRemaining && fiveHourRemaining < weeklyRemaining) {
+            existing.resetTime = fiveHourReset;
+            existing.remainingFractionResetTime = fiveHourReset;
+          }
+        } else if (weeklyRemaining !== undefined) {
+          if (existing.remainingFraction === undefined || weeklyRemaining < existing.remainingFraction) {
+            existing.remainingFraction = weeklyRemaining;
+            existing.resetTime = weeklyReset;
+            existing.remainingFractionResetTime = weeklyReset;
+          }
+        }
+      } else if (weeklyRemaining !== undefined || fiveHourRemaining !== undefined) {
+        const bottleneck = Math.min(weeklyRemaining ?? 1, fiveHourRemaining ?? 1);
+        const isWeeklyBottleneck = (weeklyRemaining ?? 1) <= (fiveHourRemaining ?? 1);
+        groups[target] = {
+          remainingFraction: bottleneck,
+          resetTime: isWeeklyBottleneck ? weeklyReset : fiveHourReset,
+          remainingFractionResetTime: isWeeklyBottleneck ? weeklyReset : fiveHourReset,
+          weeklyRemainingFraction: weeklyRemaining,
+          weeklyResetTime: weeklyReset,
+          fiveHourRemainingFraction: fiveHourRemaining,
+          fiveHourResetTime: fiveHourReset,
+          modelCount: 0,
+        };
+      }
+    }
+  }
+}
+
 function aggregateGeminiCliQuota(response: RetrieveUserQuotaResponse): GeminiCliQuotaSummary {
   const models: GeminiCliQuotaModel[] = [];
   
@@ -395,10 +548,12 @@ export async function checkAccountsQuota(
       let quotaResult: QuotaSummary;
       let geminiCliQuotaResult: GeminiCliQuotaSummary;
       
-      // Fetch both Antigravity and Gemini CLI quotas in parallel
-      const [antigravityResponse, geminiCliResponse] = await Promise.all([
+      // Fetch Antigravity models, user quota summary (weekly & 5h limits), and Gemini CLI quotas in parallel
+      const [antigravityResponse, userQuotaSummaryResponse, geminiCliResponse] = await Promise.all([
         fetchAvailableModels(auth.access ?? "", projectContext.effectiveProjectId)
           .catch((error): FetchAvailableModelsResponse => ({ models: undefined })),
+        fetchUserQuotaSummary(auth.access ?? "", projectContext.effectiveProjectId)
+          .catch((): RetrieveUserQuotaSummaryResponse => ({ groups: [] })),
         fetchGeminiCliQuota(auth.access ?? "", projectContext.effectiveProjectId),
       ]);
 
@@ -417,6 +572,9 @@ export async function checkAccountsQuota(
         quotaResult = aggregateQuota(antigravityResponse.models, selectable);
       }
 
+      // Apply authoritative weekly and 5-hour user quota summary
+      applyUserQuotaSummary(quotaResult.groups, userQuotaSummaryResponse);
+
       // Process Gemini CLI quota
       geminiCliQuotaResult = aggregateGeminiCliQuota(geminiCliResponse);
       if (geminiCliResponse.buckets === undefined || geminiCliResponse.buckets.length === 0) {
@@ -431,6 +589,7 @@ export async function checkAccountsQuota(
         status: "ok",
         disabled,
         quota: quotaResult,
+        userQuotaSummary: userQuotaSummaryResponse.groups?.length ? userQuotaSummaryResponse : undefined,
         geminiCliQuota: geminiCliQuotaResult,
         updatedAccount,
       });

@@ -108,6 +108,16 @@ export async function registerAccountManagement(
           for (const [group, quota] of Object.entries(result.quota?.groups ?? {})) {
             const percent = quota.remainingFraction === undefined ? "unknown" : `${Math.round(quota.remainingFraction * 100)}% remaining`
             lines.push(`  Antigravity ${group}: ${percent}${quota.resetTime ? `; resets ${quota.resetTime}` : ""}`)
+            if (quota.weeklyRemainingFraction !== undefined || quota.fiveHourRemainingFraction !== undefined) {
+              const details: string[] = []
+              if (quota.weeklyRemainingFraction !== undefined) {
+                details.push(`weekly ${Math.round(quota.weeklyRemainingFraction * 100)}%${quota.weeklyResetTime ? ` (resets ${quota.weeklyResetTime})` : ""}`)
+              }
+              if (quota.fiveHourRemainingFraction !== undefined) {
+                details.push(`5-hour ${Math.round(quota.fiveHourRemainingFraction * 100)}%${quota.fiveHourResetTime ? ` (resets ${quota.fiveHourResetTime})` : ""}`)
+              }
+              lines.push(`    [${details.join(", ")}]`)
+            }
           }
           if (result.quota?.error) lines.push(`  Antigravity: ${result.quota.error}`)
           for (const quota of result.geminiCliQuota?.models ?? []) {

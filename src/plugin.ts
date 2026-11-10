@@ -2816,6 +2816,22 @@ export const createAntigravityPlugin = (providerId: string) => async (
                         const reset = formatReset(g.data!.resetTime);
                         const modelName = g.name.padEnd(29);
                         console.log(`     ${connector} ${modelName} ${bar}${reset}`);
+                        if (g.data!.weeklyRemainingFraction !== undefined || g.data!.fiveHourRemainingFraction !== undefined) {
+                          const branchConnector = isLast ? " " : "│";
+                          if (g.data!.weeklyRemainingFraction !== undefined) {
+                            const weeklyBar = createProgressBar(g.data!.weeklyRemainingFraction);
+                            const weeklyReset = formatReset(g.data!.weeklyResetTime);
+                            const weeklyName = "  Weekly Limit".padEnd(29);
+                            const subConn = g.data!.fiveHourRemainingFraction !== undefined ? "├─" : "└─";
+                            console.log(`     ${branchConnector}  ${subConn} ${weeklyName} ${weeklyBar}${weeklyReset}`);
+                          }
+                          if (g.data!.fiveHourRemainingFraction !== undefined) {
+                            const fiveHourBar = createProgressBar(g.data!.fiveHourRemainingFraction);
+                            const fiveHourReset = formatReset(g.data!.fiveHourResetTime);
+                            const fiveHourName = "  5-Hour Limit".padEnd(29);
+                            console.log(`     ${branchConnector}  └─ ${fiveHourName} ${fiveHourBar}${fiveHourReset}`);
+                          }
+                        }
                       });
                     }
                     console.log("");

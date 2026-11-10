@@ -165,4 +165,71 @@ describe("checkAccountsQuota", () => {
     const [result] = await checkAccountsQuota([account], {} as PluginClient)
     expect(result?.quota?.groups.claude).toMatchObject({ remainingFraction: 0.2, remainingFractionResetTime: "2026-10-27T17:00:00Z" })
   })
+
+  it("applies weekly and 5-hour limits from retrieveUserQuotaSummary", async () => {
+    const { applyUserQuotaSummary } = await import("./quota")
+    const groups = {
+      "gemini-flash": { remainingFraction: 0.98, resetTime: "2026-11-10T05:50:00Z", modelCount: 1 },
+      "gemini-pro": { remainingFraction: 0.98, resetTime: "2026-11-10T05:50:00Z", modelCount: 1 },
+    }
+    const summary = {
+      groups: [
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.29, resetTime: "2026-11-14T12:00:00Z" },
+            { bucketId: "gemini-5h", window: "5h", remainingFraction: 0.98, resetTime: "2026-11-10T05:50:00Z" },
+          ],
+        },
+      ],
+    }
+
+    applyUserQuotaSummary(groups, summary)
+
+    expect(groups["gemini-flash"]).toEqual({
+      remainingFraction: 0.29,
+      resetTime: "2026-11-14T12:00:00Z",
+      remainingFractionResetTime: "2026-11-14T12:00:00Z",
+      weeklyRemainingFraction: 0.29,
+      weeklyResetTime: "2026-11-14T12:00:00Z",
+      fiveHourRemainingFraction: 0.98,
+      fiveHourResetTime: "2026-11-10T05:50:00Z",
+      modelCount: 1,
+    })
+    expect(groups["gemini-pro"]?.remainingFraction).toBe(0.29)
+  })
+
+  it("fetches user quota summary in checkAccountsQuota and populates result", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith(":fetchAvailableModels")) {
+        return jsonResponse({
+          models: {
+            "gemini-3.8-flash-high": { quotaInfo: { remainingFraction: 0.95 } },
+          },
+        })
+      }
+      if (url.endsWith(":retrieveUserQuotaSummary")) {
+        return jsonResponse({
+          groups: [
+            {
+              displayName: "Gemini Models",
+              buckets: [
+                { bucketId: "gemini-weekly", window: "weekly", remainingFraction: 0.35, resetTime: "2026-11-15T00:00:00Z" },
+                { bucketId: "gemini-5h", window: "5h", remainingFraction: 0.95, resetTime: "2026-11-10T05:50:00Z" },
+              ],
+            },
+          ],
+        })
+      }
+      return jsonResponse({ buckets: [] })
+    }))
+
+    const [result] = await checkAccountsQuota([account], {} as PluginClient)
+    expect(result?.status).toBe("ok")
+    expect(result?.userQuotaSummary?.groups).toHaveLength(1)
+    expect(result?.quota?.groups["gemini-flash"]?.weeklyRemainingFraction).toBe(0.35)
+    expect(result?.quota?.groups["gemini-flash"]?.fiveHourRemainingFraction).toBe(0.95)
+    expect(result?.quota?.groups["gemini-flash"]?.remainingFraction).toBe(0.35)
+  })
 })
