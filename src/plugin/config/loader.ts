@@ -37,6 +37,21 @@ function getConfigDir(): string {
 }
 
 /**
+ * Get the machine-level config file path.
+ * Supports centralized system configurations (%ProgramData%\opencode, /etc/opencode).
+ */
+export function getMachineConfigPath(): string {
+  if (process.platform === "win32") {
+    const programData = process.env.ProgramData || "C:\\ProgramData";
+    return join(programData, "opencode", "antigravity.json");
+  }
+  if (process.platform === "darwin") {
+    return join("/Library/Application Support/opencode", "antigravity.json");
+  }
+  return join("/etc/opencode", "antigravity.json");
+}
+
+/**
  * Get the user-level config file path.
  */
 export function getUserConfigPath(): string {
@@ -122,14 +137,20 @@ export function loadConfig(directory: string): AntigravityConfig {
   // Start with defaults
   let config: AntigravityConfig = { ...DEFAULT_CONFIG };
 
-  // Load user config file (if exists)
+  // Load machine-level config file (if exists)
+  const machineConfig = loadConfigFile(getMachineConfigPath());
+  if (machineConfig) {
+    config = mergeConfigs(config, machineConfig);
+  }
+
+  // Load user config file (if exists) - overrides machine config
   const userConfigPath = getUserConfigPath();
   const userConfig = loadConfigFile(userConfigPath);
   if (userConfig) {
     config = mergeConfigs(config, userConfig);
   }
 
-  // Load project config file (if exists) - overrides user config
+  // Load project config file (if exists) - overrides user and machine config
   const projectConfigPath = getProjectConfigPath(directory);
   const projectConfig = loadConfigFile(projectConfigPath);
   if (projectConfig) {
