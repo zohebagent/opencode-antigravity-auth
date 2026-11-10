@@ -62,7 +62,7 @@ fetch() intercepted → isGenerativeLanguageRequest() → prepareAntigravityRequ
 
 - Account selection (round-robin, rate-limit aware)
 - Token refresh if expired
-- Endpoint fallback (daily → autopush → prod)
+- Endpoint selection (Antigravity on daily host; Gemini CLI on production)
 
 ### 2. Request Transformation (`request.ts`)
 

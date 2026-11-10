@@ -38,7 +38,8 @@ can differ. See the [current protocol and migration notes](OPENCODE-V2.md).
 | Stream Generate | `/v1internal:streamGenerateContent?alt=sse` | Streaming (SSE) request |
 | Load Code Assist | `/v1internal:loadCodeAssist` | Project discovery |
 | Onboard User | `/v1internal:onboardUser` | User onboarding |
-| Available Models | `/v1internal:fetchAvailableModels` | Account-specific model inventory and quota |
+| Available Models | `/v1internal:fetchAvailableModels` | Account-specific model inventory and 5-hour quota |
+| User Quota Summary | `/v1internal:retrieveUserQuotaSummary` | Authoritative weekly and 5-hour quota buckets |
 
 ---
 
@@ -99,6 +100,72 @@ The reference inventory is maintained by
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/models/models.json).
 Use `fetchAvailableModels` with your account to establish actual availability.
 Suffixes in advertised backend IDs are preserved.
+
+---
+
+## User Quota Summary
+
+Antigravity models share a **weekly limit** and a **5-hour limit** within each group. Quota is consumed proportionally to token cost. While `fetchAvailableModels` reports the rolling 5-hour limit in `quotaInfo`, the authoritative weekly breakdown is retrieved via `retrieveUserQuotaSummary`.
+
+### Request
+
+```http
+POST https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary
+Authorization: Bearer {access_token}
+Content-Type: application/json
+User-Agent: antigravity/hub/2.24.0 (aidev_client; os_type=darwin; arch=arm64; cl=1000335682)
+
+{
+  "project": "{project_id}"
+}
+```
+
+### Response
+
+```json
+{
+  "groups": [
+    {
+      "displayName": "Gemini Models",
+      "description": "Models within this group: Gemini Flash, Gemini Pro",
+      "buckets": [
+        {
+          "bucketId": "gemini-weekly",
+          "displayName": "Weekly Limit Remaining",
+          "window": "weekly",
+          "resetTime": "2026-11-14T12:04:20Z",
+          "remainingFraction": 0.29003334
+        },
+        {
+          "bucketId": "gemini-5h",
+          "displayName": "Five Hour Limit Remaining",
+          "window": "5h",
+          "resetTime": "2026-11-10T05:50:44Z",
+          "remainingFraction": 0.9797745
+        }
+      ]
+    },
+    {
+      "displayName": "Claude and GPT models",
+      "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+      "buckets": [
+        {
+          "bucketId": "3p-weekly",
+          "displayName": "Weekly Limit Remaining",
+          "window": "weekly",
+          "remainingFraction": 1.0
+        },
+        {
+          "bucketId": "3p-5h",
+          "displayName": "Five Hour Limit Remaining",
+          "window": "5h",
+          "remainingFraction": 1.0
+        }
+      ]
+    }
+  ]
+}
+```
 
 ---
 
