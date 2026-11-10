@@ -37,6 +37,12 @@ const UNSUPPORTED_KEYWORDS = [
   "propertyNames", "title", "$id", "$comment",
 ] as const;
 
+const MAX_SCHEMA_DEPTH = 32;
+
+function isUnsafeObjectKey(key: string): boolean {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
+
 /**
  * Appends a hint to a schema's description field.
  */
@@ -53,13 +59,15 @@ function appendDescriptionHint(schema: any, hint: string): any {
  * Phase 1a: Converts $ref to description hints.
  * $ref: "#/$defs/Foo" → { type: "object", description: "See: Foo" }
  */
-function convertRefsToHints(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function convertRefsToHints(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => convertRefsToHints(item));
+    return schema.map(item => convertRefsToHints(item, depth + 1, seen));
   }
 
   // If this object has $ref, replace it with a hint
@@ -75,7 +83,8 @@ function convertRefsToHints(schema: any): any {
   // Recursively process all properties
   const result: any = {};
   for (const [key, value] of Object.entries(schema)) {
-    result[key] = convertRefsToHints(value);
+    if (isUnsafeObjectKey(key)) continue;
+    result[key] = convertRefsToHints(value, depth + 1, seen);
   }
   return result;
 }
@@ -84,21 +93,24 @@ function convertRefsToHints(schema: any): any {
  * Phase 1b: Converts const to enum.
  * { const: "foo" } → { enum: ["foo"] }
  */
-function convertConstToEnum(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function convertConstToEnum(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => convertConstToEnum(item));
+    return schema.map(item => convertConstToEnum(item, depth + 1, seen));
   }
 
   const result: any = {};
   for (const [key, value] of Object.entries(schema)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (key === "const" && !schema.enum) {
       result.enum = [value];
     } else {
-      result[key] = convertConstToEnum(value);
+      result[key] = convertConstToEnum(value, depth + 1, seen);
     }
   }
   return result;
@@ -108,16 +120,21 @@ function convertConstToEnum(schema: any): any {
  * Phase 1c: Adds enum hints to description.
  * { enum: ["a", "b", "c"] } → adds "(Allowed: a, b, c)" to description
  */
-function addEnumHints(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function addEnumHints(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => addEnumHints(item));
+    return schema.map(item => addEnumHints(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // Add enum hint if enum has 2-10 items
   if (Array.isArray(result.enum) && result.enum.length > 1 && result.enum.length <= 10) {
@@ -127,8 +144,9 @@ function addEnumHints(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (key !== "enum" && typeof value === "object" && value !== null) {
-      result[key] = addEnumHints(value);
+      result[key] = addEnumHints(value, depth + 1, seen);
     }
   }
 
@@ -139,16 +157,21 @@ function addEnumHints(schema: any): any {
  * Phase 1d: Adds additionalProperties hints.
  * { additionalProperties: false } → adds "(No extra properties allowed)" to description
  */
-function addAdditionalPropertiesHints(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function addAdditionalPropertiesHints(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => addAdditionalPropertiesHints(item));
+    return schema.map(item => addAdditionalPropertiesHints(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   if (result.additionalProperties === false) {
     result = appendDescriptionHint(result, "No extra properties allowed");
@@ -156,8 +179,9 @@ function addAdditionalPropertiesHints(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (key !== "additionalProperties" && typeof value === "object" && value !== null) {
-      result[key] = addAdditionalPropertiesHints(value);
+      result[key] = addAdditionalPropertiesHints(value, depth + 1, seen);
     }
   }
 
@@ -168,16 +192,21 @@ function addAdditionalPropertiesHints(schema: any): any {
  * Phase 1e: Moves unsupported constraints to description hints.
  * { minLength: 1, maxLength: 100 } → adds "(minLength: 1) (maxLength: 100)" to description
  */
-function moveConstraintsToDescription(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function moveConstraintsToDescription(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => moveConstraintsToDescription(item));
+    return schema.map(item => moveConstraintsToDescription(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // Move constraint values to description
   for (const constraint of UNSUPPORTED_CONSTRAINTS) {
@@ -188,8 +217,9 @@ function moveConstraintsToDescription(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (typeof value === "object" && value !== null) {
-      result[key] = moveConstraintsToDescription(value);
+      result[key] = moveConstraintsToDescription(value, depth + 1, seen);
     }
   }
 
@@ -201,16 +231,21 @@ function moveConstraintsToDescription(schema: any): any {
  * { allOf: [{ properties: { a: ... } }, { properties: { b: ... } }] }
  * → { properties: { a: ..., b: ... } }
  */
-function mergeAllOf(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function mergeAllOf(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => mergeAllOf(item));
+    return schema.map(item => mergeAllOf(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // If this object has allOf, merge its contents
   if (Array.isArray(result.allOf)) {
@@ -222,13 +257,17 @@ function mergeAllOf(schema: any): any {
 
       // Merge properties
       if (item.properties && typeof item.properties === "object") {
-        merged.properties = { ...merged.properties, ...item.properties };
+        const safeProps: any = {};
+        for (const [pk, pv] of Object.entries(item.properties)) {
+          if (!isUnsafeObjectKey(pk)) safeProps[pk] = pv;
+        }
+        merged.properties = { ...merged.properties, ...safeProps };
       }
 
       // Merge required arrays
       if (Array.isArray(item.required)) {
         for (const req of item.required) {
-          if (!mergedRequired.includes(req)) {
+          if (typeof req === "string" && !isUnsafeObjectKey(req) && !mergedRequired.includes(req)) {
             mergedRequired.push(req);
           }
         }
@@ -236,6 +275,7 @@ function mergeAllOf(schema: any): any {
 
       // Copy other fields from allOf items
       for (const [key, value] of Object.entries(item)) {
+        if (isUnsafeObjectKey(key)) continue;
         if (key !== "properties" && key !== "required" && merged[key] === undefined) {
           merged[key] = value;
         }
@@ -253,6 +293,7 @@ function mergeAllOf(schema: any): any {
 
     // Copy other merged fields
     for (const [key, value] of Object.entries(merged)) {
+      if (isUnsafeObjectKey(key)) continue;
       if (key !== "properties" && key !== "required" && result[key] === undefined) {
         result[key] = value;
       }
@@ -263,8 +304,9 @@ function mergeAllOf(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (typeof value === "object" && value !== null) {
-      result[key] = mergeAllOf(value);
+      result[key] = mergeAllOf(value, depth + 1, seen);
     }
   }
 
@@ -366,16 +408,21 @@ function tryMergeEnumFromUnion(options: any[]): string[] | null {
  * { anyOf: [{ const: "a" }, { const: "b" }] }
  * → { type: "string", enum: ["a", "b"] }
  */
-function flattenAnyOfOneOf(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function flattenAnyOfOneOf(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => flattenAnyOfOneOf(item));
+    return schema.map(item => flattenAnyOfOneOf(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // Process anyOf or oneOf
   for (const unionKey of ["anyOf", "oneOf"] as const) {
@@ -419,7 +466,7 @@ function flattenAnyOfOneOf(schema: any): any {
       }
 
       // Select the best option and flatten it recursively
-      let selected = flattenAnyOfOneOf(options[bestIdx]) || { type: "string" };
+      let selected = flattenAnyOfOneOf(options[bestIdx], depth + 1, seen) || { type: "string" };
 
       // Preserve parent description
       if (parentDesc) {
@@ -445,8 +492,9 @@ function flattenAnyOfOneOf(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (typeof value === "object" && value !== null) {
-      result[key] = flattenAnyOfOneOf(value);
+      result[key] = flattenAnyOfOneOf(value, depth + 1, seen);
     }
   }
 
@@ -457,16 +505,21 @@ function flattenAnyOfOneOf(schema: any): any {
  * Phase 2c: Flattens type arrays to single type with nullable hint.
  * { type: ["string", "null"] } → { type: "string", description: "(nullable)" }
  */
-function flattenTypeArrays(schema: any, nullableFields?: Map<string, string[]>, currentPath?: string): any {
-  if (!schema || typeof schema !== "object") {
+function flattenTypeArrays(schema: any, nullableFields?: Map<string, string[]>, currentPath?: string, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map((item, idx) => flattenTypeArrays(item, nullableFields, `${currentPath || ""}[${idx}]`));
+    return schema.map((item, idx) => flattenTypeArrays(item, nullableFields, `${currentPath || ""}[${idx}]`, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
   const localNullableFields = nullableFields || new Map<string, string[]>();
 
   // Handle type array
@@ -494,8 +547,9 @@ function flattenTypeArrays(schema: any, nullableFields?: Map<string, string[]>, 
   if (result.properties && typeof result.properties === "object") {
     const newProps: any = {};
     for (const [propKey, propValue] of Object.entries(result.properties)) {
+      if (isUnsafeObjectKey(propKey)) continue;
       const propPath = currentPath ? `${currentPath}.properties.${propKey}` : `properties.${propKey}`;
-      const processed = flattenTypeArrays(propValue, localNullableFields, propPath);
+      const processed = flattenTypeArrays(propValue, localNullableFields, propPath, depth + 1, seen);
       newProps[propKey] = processed;
 
       // Track nullable fields for required array cleanup
@@ -525,8 +579,9 @@ function flattenTypeArrays(schema: any, nullableFields?: Map<string, string[]>, 
 
   // Recursively process other nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (key !== "properties" && typeof value === "object" && value !== null) {
-      result[key] = flattenTypeArrays(value, localNullableFields, `${currentPath || ""}.${key}`);
+      result[key] = flattenTypeArrays(value, localNullableFields, `${currentPath || ""}.${key}`, depth + 1, seen);
     }
   }
 
@@ -537,17 +592,20 @@ function flattenTypeArrays(schema: any, nullableFields?: Map<string, string[]>, 
  * Phase 3: Removes unsupported keywords after hints have been extracted.
  * @param insideProperties - When true, keys are property NAMES (preserve); when false, keys are JSON Schema keywords (filter).
  */
-function removeUnsupportedKeywords(schema: any, insideProperties: boolean = false): any {
-  if (!schema || typeof schema !== "object") {
+function removeUnsupportedKeywords(schema: any, insideProperties: boolean = false, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => removeUnsupportedKeywords(item, false));
+    return schema.map(item => removeUnsupportedKeywords(item, false, depth + 1, seen));
   }
 
   const result: any = {};
   for (const [key, value] of Object.entries(schema)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (!insideProperties && (UNSUPPORTED_KEYWORDS as readonly string[]).includes(key)) {
       continue;
     }
@@ -556,11 +614,12 @@ function removeUnsupportedKeywords(schema: any, insideProperties: boolean = fals
       if (key === "properties") {
         const propertiesResult: any = {};
         for (const [propName, propSchema] of Object.entries(value as object)) {
-          propertiesResult[propName] = removeUnsupportedKeywords(propSchema, false);
+          if (isUnsafeObjectKey(propName)) continue;
+          propertiesResult[propName] = removeUnsupportedKeywords(propSchema, false, depth + 1, seen);
         }
         result[key] = propertiesResult;
       } else {
-        result[key] = removeUnsupportedKeywords(value, false);
+        result[key] = removeUnsupportedKeywords(value, false, depth + 1, seen);
       }
     } else {
       result[key] = value;
@@ -572,21 +631,26 @@ function removeUnsupportedKeywords(schema: any, insideProperties: boolean = fals
 /**
  * Phase 3b: Cleans up required fields - removes entries that don't exist in properties.
  */
-function cleanupRequiredFields(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function cleanupRequiredFields(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => cleanupRequiredFields(item));
+    return schema.map(item => cleanupRequiredFields(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // Clean up required array if properties exist
   if (Array.isArray(result.required) && result.properties && typeof result.properties === "object") {
     const validRequired = result.required.filter((req: string) => 
-      Object.prototype.hasOwnProperty.call(result.properties, req)
+      !isUnsafeObjectKey(req) && Object.prototype.hasOwnProperty.call(result.properties, req)
     );
     if (validRequired.length === 0) {
       delete result.required;
@@ -597,8 +661,9 @@ function cleanupRequiredFields(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (typeof value === "object" && value !== null) {
-      result[key] = cleanupRequiredFields(value);
+      result[key] = cleanupRequiredFields(value, depth + 1, seen);
     }
   }
 
@@ -609,16 +674,21 @@ function cleanupRequiredFields(schema: any): any {
  * Phase 4: Adds placeholder property for empty object schemas.
  * Claude VALIDATED mode requires at least one property.
  */
-function addEmptySchemaPlaceholder(schema: any): any {
-  if (!schema || typeof schema !== "object") {
+function addEmptySchemaPlaceholder(schema: any, depth = 0, seen = new WeakSet<object>()): any {
+  if (!schema || typeof schema !== "object" || depth > MAX_SCHEMA_DEPTH) {
     return schema;
   }
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
 
   if (Array.isArray(schema)) {
-    return schema.map(item => addEmptySchemaPlaceholder(item));
+    return schema.map(item => addEmptySchemaPlaceholder(item, depth + 1, seen));
   }
 
-  let result: any = { ...schema };
+  let result: any = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (!isUnsafeObjectKey(k)) result[k] = v;
+  }
 
   // Check if this is an empty object schema
   const isObjectType = result.type === "object";
@@ -642,8 +712,9 @@ function addEmptySchemaPlaceholder(schema: any): any {
 
   // Recursively process nested objects
   for (const [key, value] of Object.entries(result)) {
+    if (isUnsafeObjectKey(key)) continue;
     if (typeof value === "object" && value !== null) {
-      result[key] = addEmptySchemaPlaceholder(value);
+      result[key] = addEmptySchemaPlaceholder(value, depth + 1, seen);
     }
   }
 

@@ -119,6 +119,26 @@ describe("executeSearch", () => {
     expect(result).toContain("400");
   });
 
+  it("filters out unsafe protocols from URLs", async () => {
+    const fetchSpy = mockFetch(makeResponse("filtered"));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await executeSearch(
+      {
+        query: "search",
+        urls: ["file:///etc/passwd", "javascript:alert(1)", "https://safe.example.com"],
+      },
+      "tok",
+      "proj",
+    );
+
+    const callBody = JSON.parse(fetchSpy.mock.calls[0]![1].body);
+    const promptText = callBody.request.contents[0].parts[0].text;
+    expect(promptText).toContain("https://safe.example.com");
+    expect(promptText).not.toContain("file:///etc/passwd");
+    expect(promptText).not.toContain("javascript:");
+  });
+
   it("returns error block when fetch throws", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network down")));
     const result = await executeSearch({ query: "q" }, "tok", "proj");

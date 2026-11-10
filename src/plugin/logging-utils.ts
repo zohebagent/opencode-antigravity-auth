@@ -44,6 +44,94 @@ export function deriveDebugPolicy(input: DebugPolicyInput): DebugPolicy {
   }
 }
 
+const SENSITIVE_KEY_REGEX =
+  /^(authorization|cookie|set-cookie|password|secret|clientsecret|client_secret|refreshtoken|refresh_token|accesstoken|access_token|apikey|api_key|x-goog-api-key|session-token|x-session-token|token)$/i;
+
+const URL_SENSITIVE_PARAM_REGEX =
+  /^(key|token|access_token|refresh_token|client_secret|secret|code|verifier)$/i;
+
+/**
+ * Redacts known tokens, secrets, and credentials from a text string.
+ */
+export function redactSensitiveText(text: string): string {
+  if (!text || typeof text !== "string") return text;
+  return text
+    .replace(/Bearer\s+[^\s"'`,]+/gi, "Bearer [redacted]")
+    .replace(/ya29\.[a-zA-Z0-9_\-]+/g, "ya29.[redacted]")
+    .replace(/1\/\/[a-zA-Z0-9_\-]+/g, "1//[redacted]")
+    .replace(/AIza[0-9A-Za-z\-_]{20,}/g, "AIza[redacted]")
+    .replace(
+      /"(refreshToken|accessToken|clientSecret|client_secret|access_token|refresh_token|api_key|apiKey)":\s*"[^"]+"/gi,
+      '"$1":"[redacted]"'
+    )
+    .replace(
+      /\b(refresh_token|access_token|client_secret|code)=([^&\s"']*)/gi,
+      "$1=[redacted]"
+    );
+}
+
+/**
+ * Sanitizes URLs for logging by redacting sensitive query parameters.
+ */
+export function sanitizeUrlForLog(urlStr: string): string {
+  if (!urlStr || typeof urlStr !== "string") return urlStr;
+  try {
+    const url = new URL(urlStr);
+    let modified = false;
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (URL_SENSITIVE_PARAM_REGEX.test(key)) {
+        url.searchParams.set(key, "[redacted]");
+        modified = true;
+      }
+    }
+    return modified ? url.toString() : redactSensitiveText(urlStr);
+  } catch {
+    return redactSensitiveText(urlStr);
+  }
+}
+
+/**
+ * Recursively sanitizes objects and values to prevent accidental credential leakage in logs.
+ */
+export function sanitizeLogData(
+  data: unknown,
+  maxDepth = 6,
+  seen = new WeakSet<object>()
+): unknown {
+  if (data == null || typeof data !== "object") {
+    if (typeof data === "string") {
+      return redactSensitiveText(data);
+    }
+    return data;
+  }
+
+  if (seen.has(data as object)) {
+    return "[Circular]";
+  }
+  seen.add(data as object);
+
+  if (maxDepth <= 0) {
+    return "[DepthLimit]";
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeLogData(item, maxDepth - 1, seen));
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (key === "__proto__" || key === "prototype" || key === "constructor") {
+      continue;
+    }
+    if (SENSITIVE_KEY_REGEX.test(key)) {
+      sanitized[key] = "[redacted]";
+    } else {
+      sanitized[key] = sanitizeLogData(value, maxDepth - 1, seen);
+    }
+  }
+  return sanitized;
+}
+
 export function formatAccountLabel(email: string | undefined, accountIndex: number): string {
   return email || `Account ${accountIndex + 1}`
 }
@@ -60,12 +148,12 @@ export function formatAccountContextLabel(email: string | undefined, accountInde
 
 export function formatErrorForLog(error: unknown): string {
   if (error instanceof Error) {
-    return error.stack ?? error.message
+    return redactSensitiveText(error.stack ?? error.message)
   }
   try {
-    return JSON.stringify(error)
+    return redactSensitiveText(JSON.stringify(error))
   } catch {
-    return String(error)
+    return redactSensitiveText(String(error))
   }
 }
 
@@ -85,11 +173,11 @@ export function formatBodyPreviewForLog(
   }
 
   if (typeof body === "string") {
-    return truncateTextForLog(body, maxChars)
+    return truncateTextForLog(redactSensitiveText(body), maxChars)
   }
 
   if (body instanceof URLSearchParams) {
-    return truncateTextForLog(body.toString(), maxChars)
+    return truncateTextForLog(redactSensitiveText(body.toString()), maxChars)
   }
 
   if (typeof Blob !== "undefined" && body instanceof Blob) {

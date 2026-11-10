@@ -227,7 +227,7 @@ export function normalizeClaudeTools(
         (t.custom as Record<string, unknown> | undefined)?.parametersJsonSchema ||
         (t.custom as Record<string, unknown> | undefined)?.input_schema;
 
-      let name =
+      const rawName =
         decl?.name ||
         t.name ||
         (t.function as Record<string, unknown> | undefined)?.name ||
@@ -235,7 +235,11 @@ export function normalizeClaudeTools(
         `tool-${functionDeclarations.length}`;
 
       // Sanitize tool name: must be alphanumeric with underscores, no special chars
-      name = String(name).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+      let sanitizedName = String(rawName).replace(/[^a-zA-Z0-9_-]/g, "_");
+      if (/^[^a-zA-Z_]/.test(sanitizedName)) {
+        sanitizedName = `_${sanitizedName}`;
+      }
+      sanitizedName = sanitizedName.slice(0, 64);
 
       const description =
         decl?.description ||
@@ -245,13 +249,13 @@ export function normalizeClaudeTools(
         "";
 
       functionDeclarations.push({
-        name,
+        name: sanitizedName,
         description: String(description || ""),
         parameters: normalizeSchema(schema),
       });
 
       toolDebugSummaries.push(
-        `decl=${name},src=${source},hasSchema=${schema ? "y" : "n"}`,
+        `decl=${sanitizedName},src=${source},hasSchema=${schema ? "y" : "n"}`,
       );
     };
 

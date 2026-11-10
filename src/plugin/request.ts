@@ -1234,7 +1234,11 @@ export function prepareAntigravityRequest(
                   `tool-${functionDeclarations.length}`;
 
                 // Sanitize tool name: must be alphanumeric with underscores, no special chars
-                name = String(name).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+                name = String(name).replace(/[^a-zA-Z0-9_-]/g, "_");
+                if (/^[^a-zA-Z_]/.test(name)) {
+                  name = `_${name}`;
+                }
+                name = name.slice(0, 64);
 
                 const description =
                   decl?.description ||

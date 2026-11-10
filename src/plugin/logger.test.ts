@@ -77,4 +77,43 @@ describe("logger sink routing", () => {
 
     expect(appLog).not.toHaveBeenCalled()
   })
+
+  it("redacts sensitive fields from log message and extra payload", async () => {
+    const { initializeDebug } = await import("./debug")
+    const { createLogger, initLogger } = await import("./logger")
+
+    initializeDebug({
+      ...DEFAULT_CONFIG,
+      debug: false,
+      debug_tui: true,
+    })
+
+    const appLog = vi.fn().mockResolvedValue(undefined)
+    const client = {
+      app: {
+        log: appLog,
+      },
+    } as unknown as PluginClient
+
+    initLogger(client)
+
+    createLogger("auth").warn("Failed with refresh_token=secret_val", {
+      refreshToken: "1//secret_token",
+      accessToken: "ya29.secret_token",
+      user: "test@example.com",
+    })
+
+    expect(appLog).toHaveBeenCalledWith({
+      body: {
+        service: "antigravity.auth",
+        level: "warn",
+        message: "Failed with refresh_token=[redacted]",
+        extra: {
+          refreshToken: "[redacted]",
+          accessToken: "[redacted]",
+          user: "test@example.com",
+        },
+      },
+    })
+  })
 })

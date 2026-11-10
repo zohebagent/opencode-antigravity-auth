@@ -588,6 +588,22 @@ describe("normalizeClaudeTools", () => {
       expect(tools[0].functionDeclarations[0].name).toBe("tool_with_special_chars_");
     });
 
+    it("prepends underscore if tool name starts with digit or hyphen", () => {
+      const payload: RequestPayload = {
+        tools: [{
+          function: {
+            name: "123_tool",
+            parameters: { type: "object", properties: { x: { type: "string" } } },
+          },
+        }],
+      };
+      
+      normalizeClaudeTools(payload, identityClean);
+      
+      const tools = payload.tools as any[];
+      expect(tools[0].functionDeclarations[0].name).toBe("_123_tool");
+    });
+
     it("truncates long tool names to 64 characters", () => {
       const longName = "a".repeat(100);
       const payload: RequestPayload = {

@@ -411,7 +411,7 @@ async function ensureFileExists(path: string): Promise<void> {
   try {
     await fs.access(path);
   } catch {
-    await fs.mkdir(dirname(path), { recursive: true });
+    await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await fs.writeFile(
       path,
       JSON.stringify({ version: 4, accounts: [], activeIndex: 0 }, null, 2),
@@ -739,7 +739,7 @@ export async function loadAccounts(): Promise<AccountStorageV4 | null> {
 export async function saveAccounts(storage: AccountStorageV4): Promise<void> {
   const path = getStoragePath();
   const configDir = dirname(path);
-  await fs.mkdir(configDir, { recursive: true });
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
   await ensureGitignore(configDir);
 
   await withFileLock(path, async () => {
@@ -769,7 +769,7 @@ export async function saveAccounts(storage: AccountStorageV4): Promise<void> {
 /** Apply a targeted change to the latest pool while holding its file lock. */
 export async function updateAccounts(update: (storage: AccountStorageV4) => void): Promise<AccountStorageV4 | null> {
   const path = getStoragePath();
-  await fs.mkdir(dirname(path), { recursive: true });
+  await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await ensureGitignore(dirname(path));
   return withFileLock(path, async () => {
     const storage = await loadAccountsUnsafe();
@@ -795,7 +795,7 @@ export async function updateAccounts(update: (storage: AccountStorageV4) => void
 export async function saveAccountsReplace(storage: AccountStorageV4): Promise<void> {
   const path = getStoragePath();
   const configDir = dirname(path);
-  await fs.mkdir(configDir, { recursive: true });
+  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
   await ensureGitignore(configDir);
 
   await withFileLock(path, async () => {

@@ -7,6 +7,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { randomBytes } from 'crypto';
+
+const MAX_IMAGE_BASE64_LENGTH = 50 * 1024 * 1024; // 50MB max base64 size
 
 /**
  * Default directory for saving generated images.
@@ -16,28 +19,28 @@ function getImageOutputDir(): string {
   const homeDir = os.homedir();
   const outputDir = path.join(homeDir, '.opencode', 'generated-images');
   
-  // Create directory if it doesn't exist
+  // Create directory with restricted permissions if it doesn't exist
   if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+    fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
   }
   
   return outputDir;
 }
 
 /**
- * Generate a unique filename for the image.
+ * Generate a unique filename for the image using cryptographic randomness.
  */
 function generateImageFilename(mimeType: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const random = Math.random().toString(36).substring(2, 8);
+  const random = randomBytes(4).toString('hex');
   
-  // Determine extension from mime type
+  const lower = typeof mimeType === "string" ? mimeType.toLowerCase() : "";
   let ext = 'png';
-  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+  if (lower.includes('jpeg') || lower.includes('jpg')) {
     ext = 'jpg';
-  } else if (mimeType.includes('gif')) {
+  } else if (lower.includes('gif')) {
     ext = 'gif';
-  } else if (mimeType.includes('webp')) {
+  } else if (lower.includes('webp')) {
     ext = 'webp';
   }
   
@@ -53,13 +56,16 @@ function generateImageFilename(mimeType: string): string {
  */
 export function saveImageToDisk(base64Data: string, mimeType: string): string {
   try {
+    if (!base64Data || typeof base64Data !== "string" || base64Data.length > MAX_IMAGE_BASE64_LENGTH) {
+      return '';
+    }
     const outputDir = getImageOutputDir();
     const filename = generateImageFilename(mimeType);
     const filePath = path.join(outputDir, filename);
     
-    // Decode base64 and write to file
+    // Decode base64 and write to file with secure 0600 mode
     const buffer = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(filePath, buffer, { mode: 0o600 });
     
     return filePath;
   } catch (error) {

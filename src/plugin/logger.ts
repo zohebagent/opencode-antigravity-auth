@@ -12,6 +12,8 @@ import type { PluginClient } from "./types";
 import { isDebugTuiEnabled } from "./debug";
 import {
   isTruthyFlag,
+  redactSensitiveText,
+  sanitizeLogData,
   writeConsoleLog,
 } from "./logging-utils";
 
@@ -60,13 +62,16 @@ export function createLogger(module: string): Logger {
   const service = `antigravity.${module}`;
 
   const log = (level: LogLevel, message: string, extra?: Record<string, unknown>): void => {
+    const safeMessage = redactSensitiveText(message);
+    const safeExtra = extra ? (sanitizeLogData(extra) as Record<string, unknown>) : undefined;
+
     // TUI logging: controlled only by debug_tui policy
     if (isDebugTuiEnabled()) {
       const app = _client?.app;
       if (app && typeof app.log === "function") {
         app
           .log({
-            body: { service, level, message, extra },
+            body: { service, level, message: safeMessage, extra: safeExtra },
           })
           .catch(() => {
             // Silently ignore logging errors
@@ -77,7 +82,7 @@ export function createLogger(module: string): Logger {
     // Console fallback: when env var is set (independent of debug flags)
     if (isConsoleLogEnabled()) {
       const prefix = `[${service}]`;
-      const args = extra ? [prefix, message, extra] : [prefix, message];
+      const args = safeExtra ? [prefix, safeMessage, safeExtra] : [prefix, safeMessage];
       writeConsoleLog(level, ...args);
     }
     // If neither TUI nor console logging is enabled, log is silently discarded

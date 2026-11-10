@@ -503,8 +503,13 @@ export function wrapToolsAsFunctionDeclarations(payload: RequestPayload): WrapTo
     if (tool.functionDeclarations) {
       if (Array.isArray(tool.functionDeclarations)) {
         for (const decl of tool.functionDeclarations as Array<Record<string, unknown>>) {
+          let declName = String(decl.name || `tool-${functionDeclarations.length}`).replace(/[^a-zA-Z0-9_-]/g, "_");
+          if (/^[^a-zA-Z_]/.test(declName)) {
+            declName = `_${declName}`;
+          }
+          declName = declName.slice(0, 64);
           functionDeclarations.push({
-            name: String(decl.name || `tool-${functionDeclarations.length}`),
+            name: declName,
             description: String(decl.description || ""),
             parameters: (decl.parameters as Record<string, unknown>) || { type: "OBJECT", properties: {} },
           });
@@ -516,12 +521,16 @@ export function wrapToolsAsFunctionDeclarations(payload: RequestPayload): WrapTo
     const fn = tool.function as Record<string, unknown> | undefined;
     const custom = tool.custom as Record<string, unknown> | undefined;
 
-    const name = String(
+    let name = String(
       tool.name ||
       fn?.name ||
       custom?.name ||
       `tool-${functionDeclarations.length}`
-    );
+    ).replace(/[^a-zA-Z0-9_-]/g, "_");
+    if (/^[^a-zA-Z_]/.test(name)) {
+      name = `_${name}`;
+    }
+    name = name.slice(0, 64);
 
     const description = String(
       tool.description ||

@@ -1559,6 +1559,37 @@ describe("cleanJSONSchemaForAntigravity", () => {
 
     expect(result.properties.level.enum).toEqual(["low", "medium", "high"]);
   });
+
+  it("handles circular schemas gracefully without stack overflow", () => {
+    const circularSchema: any = {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+      },
+    };
+    circularSchema.properties.self = circularSchema;
+
+    expect(() => cleanJSONSchemaForAntigravity(circularSchema)).not.toThrow();
+    const result = cleanJSONSchemaForAntigravity(circularSchema);
+    expect(result.type).toBe("object");
+    expect(result.properties.name.type).toBe("string");
+  });
+
+  it("ignores prototype pollution keys in schemas", () => {
+    const maliciousSchema: any = {
+      type: "object",
+      __proto__: { polluted: true },
+      properties: {
+        constructor: { type: "string" },
+        normal: { type: "string" },
+      },
+    };
+
+    const result = cleanJSONSchemaForAntigravity(maliciousSchema);
+    expect(Object.prototype.hasOwnProperty.call(result, "__proto__")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result.properties, "constructor")).toBe(false);
+    expect(result.properties.normal.type).toBe("string");
+  });
 });
 
 describe("createSyntheticErrorResponse", () => {

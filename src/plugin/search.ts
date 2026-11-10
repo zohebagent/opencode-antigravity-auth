@@ -228,17 +228,34 @@ export async function executeSearch(
 ): Promise<string> {
   const { query, urls, thinking = true } = args;
 
-  // Build prompt with optional URLs
+  // Validate and sanitize URLs: only allow valid http: and https: protocols, max 20 URLs
+  const validUrls: string[] = [];
+  if (Array.isArray(urls)) {
+    for (const rawUrl of urls.slice(0, 20)) {
+      if (typeof rawUrl !== "string") continue;
+      const trimmed = rawUrl.trim();
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          validUrls.push(parsed.href);
+        }
+      } catch {
+        // Discard invalid URLs
+      }
+    }
+  }
+
+  // Build prompt with optional validated URLs
   let prompt = query;
-  if (urls && urls.length > 0) {
-    const urlList = urls.join("\n");
+  if (validUrls.length > 0) {
+    const urlList = validUrls.join("\n");
     prompt = `${query}\n\nURLs to analyze:\n${urlList}`;
   }
 
   // Build tools array - only grounding tools, no function declarations
   const tools: Array<Record<string, unknown>> = [];
   tools.push({ googleSearch: {} });
-  if (urls && urls.length > 0) {
+  if (validUrls.length > 0) {
     tools.push({ urlContext: {} });
   }
 
@@ -276,7 +293,7 @@ export async function executeSearch(
 
   log.debug("Executing search", {
     query,
-    urlCount: urls?.length ?? 0,
+    urlCount: validUrls.length,
     thinking,
   });
 
@@ -293,7 +310,8 @@ export async function executeSearch(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const rawErrorText = await response.text().catch(() => "");
+      const errorText = rawErrorText.length > 500 ? rawErrorText.slice(0, 500) + "..." : rawErrorText;
       log.debug("Search API error", { status: response.status, error: errorText });
       return `## Search Error\n\nFailed to execute search: ${response.status} ${response.statusText}\n\n${errorText}\n\nPlease try again with a different query.`;
     }

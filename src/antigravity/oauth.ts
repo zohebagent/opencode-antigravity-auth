@@ -76,12 +76,12 @@ function decodeState(state: string): AntigravityAuthState {
   const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), "=");
   const json = Buffer.from(padded, "base64").toString("utf8");
   const parsed = JSON.parse(json);
-  if (typeof parsed.verifier !== "string") {
+  if (!parsed || typeof parsed !== "object" || typeof (parsed as any).verifier !== "string") {
     throw new Error("Missing PKCE verifier in state");
   }
   return {
-    verifier: parsed.verifier,
-    projectId: typeof parsed.projectId === "string" ? parsed.projectId : "",
+    verifier: (parsed as any).verifier,
+    projectId: typeof (parsed as any).projectId === "string" ? (parsed as any).projectId : "",
   };
 }
 

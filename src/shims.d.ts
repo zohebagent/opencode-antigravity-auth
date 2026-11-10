@@ -6,3 +6,7 @@ declare module "@openauthjs/openauth/pkce" {
 
   export function generatePKCE(): Promise<PkcePair>;
 }
+
+declare module "@ai-sdk/provider" {
+  export type LanguageModelV3StreamPart = any;
+}

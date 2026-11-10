@@ -292,26 +292,53 @@ const successResponse = `<!DOCTYPE html>
   </body>
 </html>`;
 
+  const SECURITY_HEADERS: Record<string, string> = {
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    "Pragma": "no-cache",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+  };
+
   timeoutHandle = setTimeout(() => {
     rejectCallback(new Error("Timed out waiting for OAuth callback"));
   }, timeoutMs);
   timeoutHandle.unref?.();
 
   const server = createServer((request, response) => {
+    // Only accept GET and HEAD requests
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.writeHead(405, {
+        "Content-Type": "text/plain",
+        "Allow": "GET, HEAD",
+        ...SECURITY_HEADERS,
+      });
+      response.end("Method Not Allowed");
+      return;
+    }
+
     if (!request.url) {
-      response.writeHead(400, { "Content-Type": "text/plain" });
+      response.writeHead(400, { "Content-Type": "text/plain", ...SECURITY_HEADERS });
       response.end("Invalid request");
       return;
     }
 
     const url = new URL(request.url, origin);
     if (url.pathname !== callbackPath) {
-      response.writeHead(404, { "Content-Type": "text/plain" });
+      response.writeHead(404, { "Content-Type": "text/plain", ...SECURITY_HEADERS });
       response.end("Not found");
       return;
     }
 
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    // Require either a code or error parameter to be considered a genuine OAuth redirect
+    if (!url.searchParams.has("code") && !url.searchParams.has("error")) {
+      response.writeHead(400, { "Content-Type": "text/plain", ...SECURITY_HEADERS });
+      response.end("Missing code or error parameter");
+      return;
+    }
+
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
     response.end(successResponse);
 
     resolveCallback(url);

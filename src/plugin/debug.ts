@@ -10,6 +10,8 @@ import {
   formatBodyPreviewForLog,
   formatErrorForLog,
   isTruthyFlag,
+  redactSensitiveText,
+  sanitizeUrlForLog,
   truncateTextForLog,
 } from "./logging-utils";
 import { ensureGitignoreSync } from "./storage";
@@ -230,9 +232,10 @@ export function startAntigravityDebugRequest(meta: AntigravityDebugRequestMeta):
 
   const id = `ANTIGRAVITY-${++requestCounter}`;
   const method = meta.method ?? "GET";
-  logDebug(`[Antigravity Debug ${id}] pid=${process.pid} ${method} ${meta.resolvedUrl}`);
+  const resolvedUrl = sanitizeUrlForLog(meta.resolvedUrl);
+  logDebug(`[Antigravity Debug ${id}] pid=${process.pid} ${method} ${resolvedUrl}`);
   if (meta.originalUrl && meta.originalUrl !== meta.resolvedUrl) {
-    logDebug(`[Antigravity Debug ${id}] Original URL: ${meta.originalUrl}`);
+    logDebug(`[Antigravity Debug ${id}] Original URL: ${sanitizeUrlForLog(meta.originalUrl)}`);
   }
   if (meta.projectId) {
     logDebug(`[Antigravity Debug ${id}] Project: ${meta.projectId}`);
@@ -280,10 +283,22 @@ export function logAntigravityDebugResponse(
 
   if (meta.body) {
     logDebug(
-      `[Antigravity Debug ${context.id}] Response Body Preview: ${truncateTextForLog(meta.body, MAX_BODY_PREVIEW_CHARS)}`,
+      `[Antigravity Debug ${context.id}] Response Body Preview: ${truncateTextForLog(redactSensitiveText(meta.body), MAX_BODY_PREVIEW_CHARS)}`,
     );
   }
 }
+
+const SENSITIVE_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-goog-api-key",
+  "api-key",
+  "x-api-key",
+  "session-token",
+  "x-session-token",
+]);
 
 /**
  * Obscures sensitive headers and returns a plain object for logging.
@@ -296,10 +311,10 @@ function maskHeaders(headers?: HeadersInit | Headers): Record<string, string> {
   const result: Record<string, string> = {};
   const parsed = headers instanceof Headers ? headers : new Headers(headers);
   parsed.forEach((value, key) => {
-    if (key.toLowerCase() === "authorization") {
+    if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
       result[key] = "[redacted]";
     } else {
-      result[key] = value;
+      result[key] = redactSensitiveText(value);
     }
   });
   return result;

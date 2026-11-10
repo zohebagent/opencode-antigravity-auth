@@ -719,6 +719,12 @@ function parseOAuthCallbackInput(
 
   try {
     const url = new URL(trimmed);
+    const errorParam = url.searchParams.get("error");
+    if (errorParam) {
+      const desc = url.searchParams.get("error_description");
+      return { error: desc ? `OAuth error: ${errorParam} - ${desc}` : `OAuth error: ${errorParam}` };
+    }
+
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state") ?? fallbackState;
 
