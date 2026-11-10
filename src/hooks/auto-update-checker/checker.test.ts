@@ -60,6 +60,20 @@ describe("isLocalDevMode / getLocalDevPath", () => {
     expect(result).toContain("opencode-antigravity-auth");
   });
 
+  it("returns path when V2 config contains a bare local path in plugins array", async () => {
+    const { getLocalDevPath } = await import("./checker");
+    fsMock.existsSync.mockImplementation((p: string) =>
+      p.endsWith("opencode.jsonc"),
+    );
+    fsMock.readFileSync.mockReturnValue(
+      JSON.stringify({
+        plugins: ["/home/user/opencode-antigravity-auth"],
+      }),
+    );
+    const result = getLocalDevPath("/project");
+    expect(result).toContain("opencode-antigravity-auth");
+  });
+
   it("handles JSONC config with comments and trailing commas", async () => {
     const { getLocalDevPath } = await import("./checker");
     fsMock.existsSync.mockImplementation((p: string) =>

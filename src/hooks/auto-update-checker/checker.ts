@@ -7,6 +7,7 @@ import {
   NPM_REGISTRY_URL,
   NPM_FETCH_TIMEOUT,
   INSTALLED_PACKAGE_JSON,
+  USER_CONFIG_DIR,
   USER_OPENCODE_CONFIG,
   USER_OPENCODE_CONFIG_JSONC,
 } from "./constants";
@@ -23,13 +24,30 @@ function stripJsonComments(json: string): string {
 }
 
 function getConfigPaths(directory: string): string[] {
-  return [
+  const paths = [
     path.join(directory, ".opencode", "opencode.json"),
     path.join(directory, ".opencode", "opencode.jsonc"),
     path.join(directory, ".opencode.json"),
     USER_OPENCODE_CONFIG,
     USER_OPENCODE_CONFIG_JSONC,
+    path.join(process.env.XDG_CONFIG_HOME ?? path.join(path.dirname(USER_CONFIG_DIR), ".config"), "opencode", "opencode.json"),
+    path.join(process.env.XDG_CONFIG_HOME ?? path.join(path.dirname(USER_CONFIG_DIR), ".config"), "opencode", "opencode.jsonc"),
   ];
+
+  if (process.platform === "win32") {
+    const programData = process.env.ProgramData || "C:\\ProgramData";
+    paths.push(
+      path.join(programData, "opencode", "opencode.json"),
+      path.join(programData, "opencode", "opencode.jsonc"),
+    );
+  } else {
+    paths.push(
+      "/etc/opencode/opencode.json",
+      "/etc/opencode/opencode.jsonc",
+    );
+  }
+
+  return paths;
 }
 
 export function getLocalDevPath(directory: string): string | null {
@@ -38,15 +56,26 @@ export function getLocalDevPath(directory: string): string | null {
       if (!fs.existsSync(configPath)) continue;
       const content = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(stripJsonComments(content)) as OpencodeConfig;
-      const plugins = config.plugin ?? [];
+      const plugins = [
+        ...(Array.isArray(config.plugin) ? config.plugin : []),
+        ...(Array.isArray(config.plugins) ? config.plugins : []),
+      ];
 
-      for (const entry of plugins) {
+      for (const rawEntry of plugins) {
+        const entry = typeof rawEntry === "string" ? rawEntry : rawEntry?.package ?? "";
+        if (!entry) continue;
+
         if (entry.startsWith("file://") && entry.includes(PACKAGE_NAME)) {
           try {
             return fileURLToPath(entry);
           } catch {
             return entry.replace("file://", "");
           }
+        }
+
+        // Support bare local filesystem paths (e.g. "C:/.../opencode-antigravity-auth" or "./...")
+        if ((path.isAbsolute(entry) || entry.startsWith(".")) && entry.includes(PACKAGE_NAME)) {
+          return path.resolve(path.dirname(configPath), entry);
         }
       }
     } catch {
@@ -111,9 +140,15 @@ export function findPluginEntry(directory: string): PluginEntryInfo | null {
       if (!fs.existsSync(configPath)) continue;
       const content = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(stripJsonComments(content)) as OpencodeConfig;
-      const plugins = config.plugin ?? [];
+      const plugins = [
+        ...(Array.isArray(config.plugin) ? config.plugin : []),
+        ...(Array.isArray(config.plugins) ? config.plugins : []),
+      ];
 
-      for (const entry of plugins) {
+      for (const rawEntry of plugins) {
+        const entry = typeof rawEntry === "string" ? rawEntry : rawEntry?.package ?? "";
+        if (!entry) continue;
+
         if (entry === PACKAGE_NAME) {
           return { entry, isPinned: false, pinnedVersion: null, configPath };
         }
@@ -122,7 +157,7 @@ export function findPluginEntry(directory: string): PluginEntryInfo | null {
           const isPinned = pinnedVersion !== "latest";
           return { entry, isPinned, pinnedVersion: isPinned ? pinnedVersion : null, configPath };
         }
-        if (entry.startsWith("file://") && entry.includes(PACKAGE_NAME)) {
+        if ((entry.startsWith("file://") || path.isAbsolute(entry) || entry.startsWith(".")) && entry.includes(PACKAGE_NAME)) {
           return { entry, isPinned: false, pinnedVersion: null, configPath };
         }
       }
