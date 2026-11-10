@@ -15,7 +15,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import type { SignatureCacheConfig } from "../config";
-import { ensureGitignoreSync } from "../storage";
+import { ensureGitignoreSync, getConfigDir } from "../storage";
 
 // =============================================================================
 // Types
@@ -69,17 +69,30 @@ export interface ThinkingCacheData {
 // Path Utilities
 // =============================================================================
 
-function getConfigDir(): string {
-  const platform = process.platform;
-  if (platform === "win32") {
-    return join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "opencode");
-  }
-  const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(xdgConfig, "opencode");
-}
-
 function getCacheFilePath(): string {
-  return join(getConfigDir(), "antigravity-signature-cache.json");
+  const newPath = join(getConfigDir(), "antigravity-signature-cache.json");
+
+  // On Windows, migrate legacy %APPDATA%\opencode cache to ~/.config/opencode
+  if (process.platform === "win32") {
+    const legacyPath = join(
+      process.env.APPDATA || join(homedir(), "AppData", "Roaming"),
+      "opencode",
+      "antigravity-signature-cache.json",
+    );
+    if (!existsSync(newPath) && existsSync(legacyPath)) {
+      try {
+        const dir = dirname(newPath);
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true, mode: 0o700 });
+        }
+        renameSync(legacyPath, newPath);
+      } catch {
+        return legacyPath;
+      }
+    }
+  }
+
+  return newPath;
 }
 
 // =============================================================================

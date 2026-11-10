@@ -15,7 +15,7 @@ function getXdgData(): string {
   const platform = process.platform;
   
   if (platform === "win32") {
-    return process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+    return process.env.LOCALAPPDATA || process.env.APPDATA || join(homedir(), "AppData", "Local");
   }
   
   return process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
@@ -23,15 +23,12 @@ function getXdgData(): string {
 
 /**
  * Get the XDG config directory for Antigravity config.
- * Falls back to ~/.config on Linux/Mac, or APPDATA on Windows.
+ * Aligns with OpenCode V2 standard ~/.config on all platforms (including Windows).
  */
 export function getXdgConfig(): string {
-  const platform = process.platform;
-  
-  if (platform === "win32") {
-    return process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  if (process.env.OPENCODE_CONFIG_DIR) {
+    return process.env.OPENCODE_CONFIG_DIR;
   }
-  
   return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 }
 

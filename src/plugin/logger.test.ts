@@ -8,6 +8,7 @@ const { ensureGitignoreSyncMock } = vi.hoisted(() => ({
 
 vi.mock("./storage", () => ({
   ensureGitignoreSync: ensureGitignoreSyncMock,
+  getConfigDir: () => "/tmp/opencode-config",
 }))
 
 describe("logger sink routing", () => {
