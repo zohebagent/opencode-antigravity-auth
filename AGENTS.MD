@@ -21,6 +21,9 @@ npm run test:e2e:models              # E2E: model availability check
 npm run test:e2e:regression          # E2E: regression suite
 ```
 
+> **IMPORTANT — In-Flight Build Hazard:**
+> Never run `npm run build` (`pnpm build`) while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Error: Plugin instance disposed`. When rebuilding `dist/`, switch to another provider model first or reload config & restart OpenCode after building.
+
 No linter or formatter is configured. Style is enforced by convention (see below).
 
 ## TypeScript Configuration
