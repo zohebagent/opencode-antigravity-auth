@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AccountManager, type ModelFamily, type HeaderStyle, parseRateLimitReason, calculateBackoffMs, type RateLimitReason, resolveQuotaGroup } from "./accounts";
+import { AccountManager, type ModelFamily, type HeaderStyle, parseRateLimitReason, calculateBackoffMs, type RateLimitReason, resolveQuotaGroup, isOverSoftQuotaThreshold } from "./accounts";
 import { saveAccounts, type AccountStorageV4 } from "./storage";
 import type { OAuthAuthDetails } from "./types";
 
@@ -1781,6 +1781,48 @@ describe("AccountManager", () => {
 
       const account = manager.getCurrentOrNextForFamily("claude", null, "sticky", "antigravity", false, 90);
       expect(account?.parts.refreshToken).toBe("r1");
+    });
+
+    it("evaluates weekly soft quota thresholds independently", () => {
+      const account: any = {
+        email: "test@example.com",
+        index: 0,
+        cachedQuotaUpdatedAt: Date.now(),
+        cachedQuota: {
+          "gemini-flash": {
+            modelCount: 1,
+            remainingFraction: 0.2,
+            weeklyRemainingFraction: 0.1, // 90% used
+            fiveHourRemainingFraction: 0.9, // 10% used
+          },
+        },
+      };
+
+      // 90% weekly used >= 85% threshold -> over threshold
+      expect(isOverSoftQuotaThreshold(account, "gemini", 100, 600000, "gemini-3-flash", { weeklyThresholdPercent: 85 })).toBe(true);
+      // 90% weekly used < 95% threshold -> under threshold
+      expect(isOverSoftQuotaThreshold(account, "gemini", 100, 600000, "gemini-3-flash", { weeklyThresholdPercent: 95 })).toBe(false);
+    });
+
+    it("evaluates 5-hour soft quota thresholds independently", () => {
+      const account: any = {
+        email: "test@example.com",
+        index: 0,
+        cachedQuotaUpdatedAt: Date.now(),
+        cachedQuota: {
+          "gemini-flash": {
+            modelCount: 1,
+            remainingFraction: 0.05,
+            weeklyRemainingFraction: 0.8, // 20% used
+            fiveHourRemainingFraction: 0.05, // 95% used
+          },
+        },
+      };
+
+      // 95% 5h used >= 90% threshold -> over threshold
+      expect(isOverSoftQuotaThreshold(account, "gemini", 100, 600000, "gemini-3-flash", { fiveHourThresholdPercent: 90 })).toBe(true);
+      // 95% 5h used < 98% threshold -> under threshold
+      expect(isOverSoftQuotaThreshold(account, "gemini", 100, 600000, "gemini-3-flash", { fiveHourThresholdPercent: 98 })).toBe(false);
     });
   });
 

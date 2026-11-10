@@ -381,6 +381,28 @@ export const AntigravityConfigSchema = z.object({
     * @default 90
     */
    soft_quota_threshold_percent: z.number().min(1).max(100).default(90),
+
+   /**
+    * Soft quota threshold percentage for weekly limit (1-100).
+    * When an account's weekly quota usage reaches this percentage, skip it during
+    * account selection (same as if it were rate-limited).
+    *
+    * Example: 85 means skip account when 85% of weekly quota is used (15% remaining).
+    * Set to 100 to disable weekly soft quota protection.
+    * Defaults to soft_quota_threshold_percent when not specified.
+    */
+   soft_quota_weekly_threshold_percent: z.number().min(1).max(100).optional(),
+
+   /**
+    * Soft quota threshold percentage for 5-hour limit (1-100).
+    * When an account's 5-hour quota usage reaches this percentage, skip it during
+    * account selection (same as if it were rate-limited).
+    *
+    * Example: 90 means skip account when 90% of 5-hour quota is used (10% remaining).
+    * Set to 100 to disable 5-hour soft quota protection.
+    * Defaults to soft_quota_threshold_percent when not specified.
+    */
+   soft_quota_five_hour_threshold_percent: z.number().min(1).max(100).optional(),
    
    /**
     * How often to refresh quota data in the background (in minutes).

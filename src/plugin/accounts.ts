@@ -259,14 +259,15 @@ export function resolveQuotaGroup(family: ModelFamily, model?: string | null): Q
   return family === "claude" ? "claude" : "gemini-pro";
 }
 
-function isOverSoftQuotaThreshold(
+export function isOverSoftQuotaThreshold(
   account: ManagedAccount,
   family: ModelFamily,
   thresholdPercent: number,
   cacheTtlMs: number,
-  model?: string | null
+  model?: string | null,
+  options?: { weeklyThresholdPercent?: number; fiveHourThresholdPercent?: number }
 ): boolean {
-  if (thresholdPercent >= 100) return false;
+  if (thresholdPercent >= 100 && (options?.weeklyThresholdPercent ?? 100) >= 100 && (options?.fiveHourThresholdPercent ?? 100) >= 100) return false;
   if (!account.cachedQuota) return false;
   
   if (account.cachedQuotaUpdatedAt == null) return false;
@@ -276,16 +277,43 @@ function isOverSoftQuotaThreshold(
   const quotaGroup = resolveQuotaGroup(family, model);
   
   const groupData = account.cachedQuota[quotaGroup];
-  if (groupData?.remainingFraction == null) return false;
-  
-  const remainingFraction = Math.max(0, Math.min(1, groupData.remainingFraction));
-  const usedPercent = (1 - remainingFraction) * 100;
-  const isOverThreshold = usedPercent >= thresholdPercent;
+  if (groupData?.remainingFraction == null && groupData?.weeklyRemainingFraction == null && groupData?.fiveHourRemainingFraction == null) return false;
+
+  const weeklyThreshold = options?.weeklyThresholdPercent ?? thresholdPercent;
+  const fiveHourThreshold = options?.fiveHourThresholdPercent ?? thresholdPercent;
+
+  let isOverThreshold = false;
+  let triggerReason = "";
+
+  if (weeklyThreshold < 100 && groupData.weeklyRemainingFraction !== undefined) {
+    const weeklyUsed = (1 - Math.max(0, Math.min(1, groupData.weeklyRemainingFraction))) * 100;
+    if (weeklyUsed >= weeklyThreshold) {
+      isOverThreshold = true;
+      triggerReason = `weekly usage ${weeklyUsed.toFixed(1)}% >= threshold ${weeklyThreshold}%`;
+    }
+  }
+
+  if (!isOverThreshold && fiveHourThreshold < 100 && groupData.fiveHourRemainingFraction !== undefined) {
+    const fiveHourUsed = (1 - Math.max(0, Math.min(1, groupData.fiveHourRemainingFraction))) * 100;
+    if (fiveHourUsed >= fiveHourThreshold) {
+      isOverThreshold = true;
+      triggerReason = `5h usage ${fiveHourUsed.toFixed(1)}% >= threshold ${fiveHourThreshold}%`;
+    }
+  }
+
+  if (!isOverThreshold && thresholdPercent < 100 && groupData.remainingFraction !== undefined) {
+    const remainingFraction = Math.max(0, Math.min(1, groupData.remainingFraction));
+    const usedPercent = (1 - remainingFraction) * 100;
+    if (usedPercent >= thresholdPercent) {
+      isOverThreshold = true;
+      triggerReason = `usage ${usedPercent.toFixed(1)}% >= threshold ${thresholdPercent}%`;
+    }
+  }
   
   if (isOverThreshold) {
     const accountLabel = formatAccountLabel(account.email, account.index);
     const resetSuffix = groupData.resetTime ? ` (resets: ${groupData.resetTime})` : "";
-    const message = `[SoftQuota] Skipping ${accountLabel}: ${quotaGroup} usage ${usedPercent.toFixed(1)}% >= threshold ${thresholdPercent}%${resetSuffix}`;
+    const message = `[SoftQuota] Skipping ${accountLabel}: ${quotaGroup} ${triggerReason}${resetSuffix}`;
     debugLogToFile(message);
   }
   
