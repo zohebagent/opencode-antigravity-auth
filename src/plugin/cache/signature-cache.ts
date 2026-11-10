@@ -392,19 +392,25 @@ export class SignatureCache {
       };
 
       // Step 5: Atomic write (temp file + rename in target directory with 0600 mode)
-      const tmpPath = join(dir, `antigravity-cache-${Date.now()}-${randomBytes(6).toString("hex")}.tmp`);
-      writeFileSync(tmpPath, JSON.stringify(cacheData, null, 2), { encoding: "utf-8", mode: 0o600 });
-
+      const tmpPath = `${this.cacheFilePath}.${randomBytes(6).toString("hex")}.tmp`;
+      let renamed = false;
       try {
-        renameSync(tmpPath, this.cacheFilePath);
-        try { chmodSync(this.cacheFilePath, 0o600); } catch { /* best effort permissions */ }
-      } catch {
-        // Fall back to copy + delete
-        writeFileSync(this.cacheFilePath, readFileSync(tmpPath), { mode: 0o600 });
+        writeFileSync(tmpPath, JSON.stringify(cacheData, null, 2), { encoding: "utf-8", mode: 0o600 });
         try {
-          unlinkSync(tmpPath);
+          renameSync(tmpPath, this.cacheFilePath);
+          renamed = true;
+          try { chmodSync(this.cacheFilePath, 0o600); } catch { /* best effort permissions */ }
         } catch {
-          // Ignore cleanup errors
+          // Fall back to copy + delete
+          writeFileSync(this.cacheFilePath, readFileSync(tmpPath), { mode: 0o600 });
+        }
+      } finally {
+        if (!renamed && existsSync(tmpPath)) {
+          try {
+            unlinkSync(tmpPath);
+          } catch {
+            // Ignore cleanup errors
+          }
         }
       }
 
