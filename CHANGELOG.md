@@ -4,6 +4,13 @@
 
 ### Added
 
+- Support the current Antigravity Gemini 4 lineup: add Gemini 4 Carbon
+  (low/medium/high), Gemini 4 Hydrogen (low/medium/high/xhigh), Gemini 3.7
+  Flash, and Gemini 3.6 Flash to the built-in fallback inventory.
+- Accept the `xhigh` reasoning effort ("Extra" in Antigravity) as a thinking
+  tier, including `-xhigh` model suffixes and variant levels.
+- Treat Gemini 4 models as level-based thinking models so `thinkingLevel` is
+  sent for them instead of being silently dropped.
 - Register the current Antigravity chat inventory as built-in definitions:
   Gemini 4 Argon, Gemini 3.8 Flash, Gemini 3.5 Flash Lite, Claude Opus 5.5,
   Claude Sonnet 5.5 (low/medium/high tiers), and GPT-OSS 120B Medium. Every

@@ -344,6 +344,13 @@ describe("advertised tier-suffix model IDs", () => {
     "gemini-4-argon-high",
     "gemini-4-argon-medium",
     "gemini-4-argon-low",
+    "gemini-4-carbon-high",
+    "gemini-4-carbon-medium",
+    "gemini-4-carbon-low",
+    "gemini-4-hydrogen-xhigh",
+    "gemini-4-hydrogen-high",
+    "gemini-3.7-flash-high",
+    "gemini-3.6-flash-medium",
     "gemini-3.8-flash-high",
     "gpt-oss-120b-medium",
   ];
@@ -371,6 +378,24 @@ describe("advertised tier-suffix model IDs", () => {
     expect(result.actualModel).toBe("gemini-3.8-flash-high");
     expect(result.thinkingLevel).toBe("high");
     expect(result.quotaPreference).toBe("antigravity");
+  });
+
+  it("derives thinking levels for Gemini 4 advertised IDs", () => {
+    const carbon = resolveModelForHeaderStyle("gemini-4-carbon-high", "antigravity");
+    expect(carbon.actualModel).toBe("gemini-4-carbon-high");
+    expect(carbon.thinkingLevel).toBe("high");
+    expect(carbon.isThinkingModel).toBe(true);
+
+    const hydrogen = resolveModelWithTier("antigravity-gemini-4-hydrogen-xhigh");
+    expect(hydrogen.actualModel).toBe("gemini-4-hydrogen-xhigh");
+    expect(hydrogen.thinkingLevel).toBe("xhigh");
+    expect(hydrogen.isThinkingModel).toBe(true);
+  });
+
+  it("defaults bare Gemini 4 models to the low thinking level", () => {
+    const result = resolveModelWithTier("antigravity-gemini-4-carbon");
+    expect(result.actualModel).toBe("gemini-4-carbon");
+    expect(result.thinkingLevel).toBe("low");
   });
 
   it("does not rewrite an advertised ID when a variant thinking budget is applied", () => {

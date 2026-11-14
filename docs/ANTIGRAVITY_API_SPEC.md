@@ -91,15 +91,22 @@ Accept: text/event-stream
 | Claude Opus 4.6 Thinking | `claude-opus-4-6-thinking` | Anthropic | Account dependent |
 | Claude Opus 5.5 High | `claude-opus-5-5-high` | Anthropic | Reference inventory |
 | Claude Sonnet 5.5 High | `claude-sonnet-5-5-high` | Anthropic | Reference inventory |
+| Gemini 4 Carbon | `gemini-4-carbon-high` | Google | Reference inventory |
 | Gemini 4 Argon | `gemini-4-argon-high` | Google | Reference inventory |
+| Gemini 4 Hydrogen | `gemini-4-hydrogen-xhigh` | Google | Reference inventory |
 | Gemini 3.8 Flash | `gemini-3.8-flash-high` | Google | Reference inventory |
+| Gemini 3.7 Flash | `gemini-3.7-flash-high` | Google | Enterprise |
+| Gemini 3.6 Flash | `gemini-3.6-flash-high` | Google | Enterprise |
 | Gemini 3 Flash | `gemini-3-flash` | Google | Account dependent |
-| GPT-OSS 120B Medium | `gpt-oss-120b-medium` | Other | Account dependent |
+| GPT-OSS 120B Medium | `gpt-oss-120b-medium` | Other | Retired November 18, 2026 |
 
 The reference inventory is maintained by
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/registry/models/models.json).
 Use `fetchAvailableModels` with your account to establish actual availability.
-Suffixes in advertised backend IDs are preserved.
+Suffixes in advertised backend IDs are preserved. Reasoning efforts are
+`low`, `medium`, `high`, plus `xhigh` (shown as **Extra** in Antigravity) on
+Gemini 4 Hydrogen. Orchestrator (Carbon/Argon) is a client-side planner/executor
+pair, not a standalone backend model.
 
 ---
 

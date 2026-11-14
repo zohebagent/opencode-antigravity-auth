@@ -23,11 +23,12 @@ export const THINKING_TIER_BUDGETS = {
 } as const;
 
 /**
- * Gemini 3 uses thinkingLevel strings instead of numeric budgets.
+ * Gemini 3 and Gemini 4 use thinkingLevel strings instead of numeric budgets.
  * Flash supports: minimal, low, medium, high
  * Pro supports: low, high (no minimal/medium)
+ * Gemini 4 Hydrogen additionally supports xhigh (labelled "Extra" in Antigravity).
  */
-export const GEMINI_3_THINKING_LEVELS = ["minimal", "low", "medium", "high"] as const;
+export const GEMINI_3_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 /**
  * Model aliases - maps user-friendly names to API model names.
@@ -74,9 +75,22 @@ const advertisedModelIds = new Set([
   "gemini-4-argon-high",
   "gemini-4-argon-medium",
   "gemini-4-argon-low",
+  "gemini-4-carbon-high",
+  "gemini-4-carbon-medium",
+  "gemini-4-carbon-low",
+  "gemini-4-hydrogen-xhigh",
+  "gemini-4-hydrogen-high",
+  "gemini-4-hydrogen-medium",
+  "gemini-4-hydrogen-low",
   "gemini-3.8-flash-high",
   "gemini-3.8-flash-medium",
   "gemini-3.8-flash-low",
+  "gemini-3.7-flash-high",
+  "gemini-3.7-flash-medium",
+  "gemini-3.7-flash-low",
+  "gemini-3.6-flash-high",
+  "gemini-3.6-flash-medium",
+  "gemini-3.6-flash-low",
   "gpt-oss-120b-medium",
 ]);
 export const ADVERTISED_TIER_SUFFIX_MODEL_IDS: ReadonlySet<string> = advertisedModelIds;
@@ -86,7 +100,7 @@ export function registerAdvertisedModelIds(ids: Iterable<string>): void {
   for (const id of ids) advertisedModelIds.add(id.toLowerCase());
 }
 
-const TIER_REGEX = /-(minimal|low|medium|high)$/;
+const TIER_REGEX = /-(minimal|low|medium|high|xhigh)$/;
 const QUOTA_PREFIX_REGEX = /^antigravity-/i;
 const GEMINI_3_PRO_REGEX = /^gemini-3(?:\.\d+)?-pro/i;
 const GEMINI_3_FLASH_REGEX = /^gemini-3(?:\.\d+)?-flash/i;
@@ -110,6 +124,7 @@ function supportsThinkingTiers(model: string): boolean {
   const lower = model.toLowerCase();
   return (
     lower.includes("gemini-3") ||
+    lower.includes("gemini-4") ||
     lower.includes("gemini-2.5") ||
     (lower.includes("claude") && lower.includes("thinking"))
   );
@@ -152,8 +167,18 @@ function isThinkingCapableModel(model: string): boolean {
   return (
     lower.includes("thinking") ||
     lower.includes("gemini-3") ||
+    lower.includes("gemini-4") ||
     lower.includes("gemini-2.5")
   );
+}
+
+/**
+ * Gemini 3 and Gemini 4 send `thinkingLevel` strings. Gemini 2.5 and Claude use
+ * numeric thinking budgets instead.
+ */
+function usesThinkingLevel(model: string): boolean {
+  const lower = model.toLowerCase();
+  return lower.includes("gemini-3") || lower.includes("gemini-4");
 }
 
 function isGemini3ProModel(model: string): boolean {
@@ -212,7 +237,7 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
   const explicitQuota = isAntigravity || isImageModel;
 
   const isGemini3 = modelWithoutQuota.toLowerCase().startsWith("gemini-3");
-  const skipAlias = isAntigravity && isGemini3;
+  const skipAlias = isAntigravity && (isGemini3 || modelWithoutQuota.toLowerCase().startsWith("gemini-4"));
 
   // For Antigravity Gemini 3 Pro models without explicit tier, append default tier
   // Antigravity API: gemini-3-pro requires tier suffix (gemini-3-pro-low/high)
@@ -249,13 +274,13 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
     };
   }
 
-  // Check if this is a Gemini 3 model (works for both aliased and skipAlias paths)
-  const isEffectiveGemini3 = resolvedModel.toLowerCase().includes("gemini-3");
+  // Check if this is a Gemini 3/4 model (works for both aliased and skipAlias paths)
+  const usesLevel = usesThinkingLevel(resolvedModel);
   const isClaudeThinking = resolvedModel.toLowerCase().includes("claude") && resolvedModel.toLowerCase().includes("thinking");
 
   if (!tier) {
-    // Gemini 3 models without explicit tier get a default thinkingLevel
-    if (isEffectiveGemini3) {
+    // Gemini 3/4 models without explicit tier get a default thinkingLevel
+    if (usesLevel) {
       return {
         actualModel: resolvedModel,
         thinkingLevel: "low",
@@ -278,8 +303,8 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
     return { actualModel: resolvedModel, isThinkingModel: isThinking, quotaPreference, explicitQuota };
   }
 
-  // Gemini 3 models with tier always get thinkingLevel set
-  if (isEffectiveGemini3) {
+  // Gemini 3/4 models with tier always get thinkingLevel set
+  if (usesLevel) {
     return {
       actualModel: resolvedModel,
       thinkingLevel: tier,
@@ -292,7 +317,8 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
 
   const budgetFamily = getBudgetFamily(resolvedModel);
   const budgets = THINKING_TIER_BUDGETS[budgetFamily];
-  const thinkingBudget = budgets[tier];
+  const budgetTier = tier === "xhigh" ? "high" : tier;
+  const thinkingBudget = budgets[budgetTier];
 
   return {
     actualModel: resolvedModel,
@@ -419,7 +445,7 @@ export function resolveModelWithVariant(
   }
 
   const budget = variantConfig.thinkingBudget;
-  const isGemini3 = base.actualModel.toLowerCase().includes("gemini-3");
+  const isGemini3 = usesThinkingLevel(base.actualModel);
 
   if (isGemini3) {
     const level = budgetToGemini3Level(budget);

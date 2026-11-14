@@ -132,10 +132,11 @@ export function isGeminiModel(model: string): boolean {
 }
 
 /**
- * Check if a model is Gemini 3 (uses thinkingLevel string).
+ * Check if a model is Gemini 3 or newer (uses thinkingLevel string).
  */
 export function isGemini3Model(model: string): boolean {
-  return model.toLowerCase().includes("gemini-3");
+  const lower = model.toLowerCase();
+  return lower.includes("gemini-3") || lower.includes("gemini-4");
 }
 
 /**

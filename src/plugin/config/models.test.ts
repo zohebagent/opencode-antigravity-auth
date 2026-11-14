@@ -27,12 +27,25 @@ describe("OPENCODE_MODEL_DEFINITIONS", () => {
       "antigravity-gemini-3-pro",
       "antigravity-gemini-3.1-pro",
       "antigravity-gemini-3.5-flash-lite",
+      "antigravity-gemini-3.6-flash-high",
+      "antigravity-gemini-3.6-flash-low",
+      "antigravity-gemini-3.6-flash-medium",
+      "antigravity-gemini-3.7-flash-high",
+      "antigravity-gemini-3.7-flash-low",
+      "antigravity-gemini-3.7-flash-medium",
       "antigravity-gemini-3.8-flash-high",
       "antigravity-gemini-3.8-flash-low",
       "antigravity-gemini-3.8-flash-medium",
       "antigravity-gemini-4-argon-high",
       "antigravity-gemini-4-argon-low",
       "antigravity-gemini-4-argon-medium",
+      "antigravity-gemini-4-carbon-high",
+      "antigravity-gemini-4-carbon-low",
+      "antigravity-gemini-4-carbon-medium",
+      "antigravity-gemini-4-hydrogen-high",
+      "antigravity-gemini-4-hydrogen-low",
+      "antigravity-gemini-4-hydrogen-medium",
+      "antigravity-gemini-4-hydrogen-xhigh",
       "antigravity-gpt-oss-120b-medium",
       "gemini-2.5-flash",
       "gemini-2.5-pro",
@@ -49,6 +62,16 @@ describe("OPENCODE_MODEL_DEFINITIONS", () => {
       limit: { context: 1048576, output: 65536 },
     });
     expect(getModel("antigravity-gemini-4-argon-medium").limit).toEqual({ context: 1048576, output: 65536 });
+    expect(getModel("antigravity-gemini-4-carbon-high")).toMatchObject({
+      name: "Gemini 4 Carbon (High) (Antigravity)",
+      limit: { context: 1048576, output: 65536 },
+    });
+    expect(getModel("antigravity-gemini-4-hydrogen-xhigh")).toMatchObject({
+      name: "Gemini 4 Hydrogen (Extra High) (Antigravity)",
+      limit: { context: 1048576, output: 65536 },
+    });
+    expect(getModel("antigravity-gemini-3.7-flash-low").limit).toEqual({ context: 1048576, output: 65536 });
+    expect(getModel("antigravity-gemini-3.6-flash-medium").limit).toEqual({ context: 1048576, output: 65536 });
     expect(getModel("antigravity-gemini-3.5-flash-lite").limit).toEqual({ context: 1048576, output: 65535 });
     expect(getModel("antigravity-claude-opus-5-5-high").limit).toEqual({ context: 1000000, output: 128000 });
     expect(getModel("antigravity-claude-sonnet-5-5-low").limit).toEqual({ context: 1000000, output: 128000 });

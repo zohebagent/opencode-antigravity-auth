@@ -1,6 +1,6 @@
 import type { ProviderModel } from "../types";
 
-export type ModelThinkingLevel = "minimal" | "low" | "medium" | "high";
+export type ModelThinkingLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface ModelThinkingConfig {
   thinkingBudget: number;
@@ -113,6 +113,71 @@ export const OPENCODE_MODEL_DEFINITIONS: OpencodeModelDefinitions = {
   },
   "antigravity-gemini-4-argon-high": {
     name: "Gemini 4 Argon (High) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-carbon-low": {
+    name: "Gemini 4 Carbon (Low) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-carbon-medium": {
+    name: "Gemini 4 Carbon (Medium) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-carbon-high": {
+    name: "Gemini 4 Carbon (High) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-hydrogen-low": {
+    name: "Gemini 4 Hydrogen (Low) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-hydrogen-medium": {
+    name: "Gemini 4 Hydrogen (Medium) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-hydrogen-high": {
+    name: "Gemini 4 Hydrogen (High) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-4-hydrogen-xhigh": {
+    name: "Gemini 4 Hydrogen (Extra High) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.7-flash-low": {
+    name: "Gemini 3.7 Flash (Low) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.7-flash-medium": {
+    name: "Gemini 3.7 Flash (Medium) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.7-flash-high": {
+    name: "Gemini 3.7 Flash (High) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.6-flash-low": {
+    name: "Gemini 3.6 Flash (Low) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.6-flash-medium": {
+    name: "Gemini 3.6 Flash (Medium) (Antigravity)",
+    limit: { context: 1048576, output: 65536 },
+    modalities: DEFAULT_MODALITIES,
+  },
+  "antigravity-gemini-3.6-flash-high": {
+    name: "Gemini 3.6 Flash (High) (Antigravity)",
     limit: { context: 1048576, output: 65536 },
     modalities: DEFAULT_MODALITIES,
   },
