@@ -3,6 +3,7 @@ import type { Plugin } from "@opencode/plugin"
 import { AntigravityAccountsRpc, type AccountSummary } from "./account-rpc.ts"
 import { parseRefreshParts } from "./auth.ts"
 import { checkAccountsQuota } from "./quota.ts"
+import { formatAccountQuotaReport } from "./ui/quota.ts"
 import { accountTokenHash, loadAccounts, matchesAccountToken, saveAccountCredentials, updateAccountCredentials, updateAccounts, type AccountMetadataV3 } from "./storage.ts"
 import type { PluginClient } from "./types.ts"
 
@@ -100,32 +101,14 @@ export async function registerAccountManagement(
         for (const result of results) {
           const original = accounts[result.index]
           if (!original) continue
-          const firstLine = lines.length
-          const finish = () => reports.push({ id: accountID(original), email: original.email ?? `Account ${result.index + 1}`, disabled: result.disabled === true, report: lines.slice(firstLine).join("\n").trim() })
-          lines.push(`${original.email ?? `Account ${result.index + 1}`}${result.disabled ? " [disabled]" : ""}`)
-          if (result.status === "disabled") { lines.push("  Skipped (disabled)", ""); finish(); continue }
-          if (result.error) { lines.push(`  ${result.error}`, ""); finish(); continue }
-          for (const [group, quota] of Object.entries(result.quota?.groups ?? {})) {
-            const percent = quota.remainingFraction === undefined ? "unknown" : `${Math.round(quota.remainingFraction * 100)}% remaining`
-            lines.push(`  Antigravity ${group}: ${percent}${quota.resetTime ? `; resets ${quota.resetTime}` : ""}`)
-            if (quota.weeklyRemainingFraction !== undefined || quota.fiveHourRemainingFraction !== undefined) {
-              const details: string[] = []
-              if (quota.weeklyRemainingFraction !== undefined) {
-                details.push(`weekly ${Math.round(quota.weeklyRemainingFraction * 100)}%${quota.weeklyResetTime ? ` (resets ${quota.weeklyResetTime})` : ""}`)
-              }
-              if (quota.fiveHourRemainingFraction !== undefined) {
-                details.push(`5-hour ${Math.round(quota.fiveHourRemainingFraction * 100)}%${quota.fiveHourResetTime ? ` (resets ${quota.fiveHourResetTime})` : ""}`)
-              }
-              lines.push(`    [${details.join(", ")}]`)
-            }
-          }
-          if (result.quota?.error) lines.push(`  Antigravity: ${result.quota.error}`)
-          for (const quota of result.geminiCliQuota?.models ?? []) {
-            lines.push(`  Gemini CLI ${quota.modelId}: ${Math.round(quota.remainingFraction * 100)}% remaining${quota.resetTime ? `; resets ${quota.resetTime}` : ""}`)
-          }
-          if (result.geminiCliQuota?.error) lines.push(`  Gemini CLI: ${result.geminiCliQuota.error}`)
-          lines.push("")
-          finish()
+          const formatted = formatAccountQuotaReport(result, { ansi: false })
+          reports.push({
+            id: accountID(original),
+            email: original.email ?? `Account ${result.index + 1}`,
+            disabled: result.disabled === true,
+            report: formatted,
+          })
+          lines.push(formatted, "")
         }
         await updateAccounts(latest => {
           for (const result of results) {

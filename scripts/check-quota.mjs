@@ -98,6 +98,7 @@ function classifyGroup(modelName) {
   const lower = modelName.toLowerCase();
   if (lower.includes("claude")) return "claude";
   if (!lower.includes("gemini")) return null;
+  if (lower.includes("argon")) return "argon";
   if (lower.includes("flash")) return "gemini-flash";
   return "gemini-pro";
 }
@@ -128,37 +129,92 @@ function updateGroup(groups, group, remainingFraction, resetTime) {
   groups[group] = entry;
 }
 
-function formatDuration(targetTime) {
-  const delta = targetTime - Date.now();
-  if (delta <= 0) return "now";
-  const totalSeconds = Math.round(delta / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+function createProgressBar(fraction, width = 34) {
+  if (typeof fraction !== "number" || !Number.isFinite(fraction)) {
+    return `[\x1b[2m${"░".repeat(width)}\x1b[0m] ???%`;
+  }
+  const clamped = Math.max(0, Math.min(1, fraction));
+  const filled = Math.round(clamped * width);
+  const empty = width - filled;
+  const color = clamped >= 0.6 ? "\x1b[32m" : clamped >= 0.2 ? "\x1b[33m" : "\x1b[31m";
+  return `[${color}${"█".repeat(filled)}\x1b[0m\x1b[2m${"░".repeat(empty)}\x1b[0m] ${(clamped * 100).toFixed(2)}%`;
 }
 
-function printGroup(label, entry) {
-  if (!entry || entry.count === 0) return;
-  const remaining = typeof entry.remaining === "number" ? Math.round(entry.remaining * 100) : null;
-  const status = remaining === null ? "UNKNOWN" : remaining <= 0 ? "LIMITED" : "OK";
-  const details = [];
-  if (remaining !== null) details.push(`remaining ${remaining}%`);
-  if (entry.weeklyRemaining !== undefined) {
-    const weeklyPct = Math.round(entry.weeklyRemaining * 100);
-    const weeklyTime = entry.weeklyResetTime ? `, resets in ${formatDuration(Date.parse(entry.weeklyResetTime))}` : "";
-    details.push(`weekly ${weeklyPct}%${weeklyTime}`);
+function formatCountdown(resetTime, remainingFraction) {
+  if (typeof remainingFraction === "number" && remainingFraction >= 1) {
+    return "\x1b[32mQuota available\x1b[0m";
   }
-  if (entry.fiveHourRemaining !== undefined) {
-    const fiveHourPct = Math.round(entry.fiveHourRemaining * 100);
-    const fiveHourTime = entry.fiveHourResetTime ? `, resets in ${formatDuration(Date.parse(entry.fiveHourResetTime))}` : "";
-    details.push(`5h ${fiveHourPct}%${fiveHourTime}`);
-  } else if (entry.resetTime && entry.weeklyRemaining === undefined) {
-    const time = formatDuration(Date.parse(entry.resetTime));
-    details.push(`resets in ${time}`);
+  if (!resetTime) {
+    return remainingFraction === 0 ? "\x1b[31mExhausted\x1b[0m" : "\x1b[32mQuota available\x1b[0m";
   }
-  const suffix = details.length ? ` (${details.join(", ")})` : "";
-  console.log(`   ${label}: ${status}${suffix}`);
+  const target = Date.parse(resetTime);
+  if (!Number.isFinite(target)) return "\x1b[32mQuota available\x1b[0m";
+  const diff = target - Date.now();
+  if (diff <= 0) return "\x1b[33mReset due\x1b[0m";
+  const mins = Math.max(1, Math.ceil(diff / 60000));
+  const hours = Math.floor(mins / 60);
+  const m = mins % 60;
+  const duration = hours > 0 ? `${hours}h ${m}m` : `${m}m`;
+  const color = remainingFraction !== undefined && remainingFraction >= 0.6 ? "\x1b[32m" : remainingFraction !== undefined && remainingFraction < 0.2 ? "\x1b[31m" : "\x1b[33m";
+  return `${color}Refreshes in ${duration}\x1b[0m`;
+}
+
+const CARD_LABELS = {
+  "gemini-pro": { title: "GEMINI MODELS", subtitle: "Models within this group: Gemini Flash, Gemini Pro" },
+  "gemini-flash": { title: "GEMINI MODELS", subtitle: "Models within this group: Gemini Flash, Gemini Pro" },
+  argon: { title: "GEMINI 4 ARGON", subtitle: "Models within this group: Gemini 4 Argon" },
+  claude: { title: "CLAUDE AND GPT MODELS", subtitle: "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS" },
+};
+
+function windowName(entry, fallback) {
+  if (!entry.resetTime) return fallback;
+  const target = Date.parse(entry.resetTime);
+  if (!Number.isFinite(target)) return fallback;
+  return target - Date.now() > 24 * 3600_000 ? "Weekly Limit Remaining" : "Five Hour Limit Remaining";
+}
+
+function cardItems(key, entry) {
+  if (!entry) return [];
+  if (entry.weeklyRemaining !== undefined || entry.fiveHourRemaining !== undefined) {
+    const items = [];
+    if (entry.weeklyRemaining !== undefined) {
+      items.push({ name: "Weekly Limit Remaining", fraction: entry.weeklyRemaining, resetTime: entry.weeklyResetTime });
+    }
+    if (entry.fiveHourRemaining !== undefined) {
+      items.push({ name: "Five Hour Limit Remaining", fraction: entry.fiveHourRemaining, resetTime: entry.fiveHourResetTime });
+    }
+    return items;
+  }
+  return [{ name: windowName(entry, key === "claude" ? "Quota Remaining" : "Limit Remaining"), fraction: entry.remaining, resetTime: entry.resetTime }];
+}
+
+function printCard(title, subtitle, items) {
+  if (items.length === 0) return;
+  console.log(`\n\x1b[1m\x1b[36m${title}\x1b[0m`);
+  if (subtitle) console.log(`  \x1b[2m${subtitle}\x1b[0m\n`);
+  for (const item of items) {
+    console.log(`  ${item.name}`);
+    console.log(`    ${createProgressBar(item.fraction)}`);
+    console.log(`    ${formatCountdown(item.resetTime, item.fraction)}\n`);
+  }
+}
+
+function printQuotaCards(groups) {
+  const pro = groups["gemini-pro"];
+  const flash = groups["gemini-flash"];
+  const primary = pro ?? flash;
+  if (primary) {
+    const shared = primary.weeklyRemaining !== undefined || primary.fiveHourRemaining !== undefined;
+    const items = shared
+      ? cardItems("gemini-pro", primary)
+      : [
+          ...cardItems("gemini-flash", flash),
+          ...cardItems("gemini-pro", pro),
+        ];
+    printCard(CARD_LABELS["gemini-pro"].title, CARD_LABELS["gemini-pro"].subtitle, items);
+  }
+  printCard(CARD_LABELS.argon.title, CARD_LABELS.argon.subtitle, cardItems("argon", groups.argon));
+  printCard(CARD_LABELS.claude.title, CARD_LABELS.claude.subtitle, cardItems("claude", groups.claude));
 }
 
 async function run() {
@@ -226,7 +282,8 @@ async function run() {
 
           const groupName = (uqGroup.displayName || "").toLowerCase();
           const targetGroups = [];
-          if (groupName.includes("gemini")) targetGroups.push("gemini-pro", "gemini-flash");
+          if (groupName.includes("argon")) targetGroups.push("argon");
+          else if (groupName.includes("gemini")) targetGroups.push("gemini-pro", "gemini-flash");
           if (groupName.includes("claude") || groupName.includes("gpt")) targetGroups.push("claude");
 
           for (const target of targetGroups) {
@@ -247,9 +304,7 @@ async function run() {
         }
       }
 
-      printGroup("Claude", groups["claude"]);
-      printGroup("Gemini 3 Pro", groups["gemini-pro"]);
-      printGroup("Gemini 3 Flash", groups["gemini-flash"]);
+      printQuotaCards(groups);
     } catch (error) {
       console.log(`   error: ${error instanceof Error ? error.message : String(error)}`);
     }

@@ -376,19 +376,20 @@ export function applyUserQuotaSummary(
       }
     }
 
-    // Determine target QuotaGroups
+    // Determine target QuotaGroups. Argon has its own bucket, so an Argon
+    // summary must not overwrite the shared Gemini Pro/Flash windows.
     const name = (group.displayName || "").toLowerCase();
     const desc = (group.description || "").toLowerCase();
     const targetGroups: QuotaGroup[] = [];
+    const isArgon = name.includes("argon") || desc.includes("argon");
 
-    if (name.includes("gemini") || desc.includes("gemini")) {
+    if (isArgon) {
+      targetGroups.push("argon");
+    } else if (name.includes("gemini") || desc.includes("gemini")) {
       targetGroups.push("gemini-pro", "gemini-flash");
     }
     if (name.includes("claude") || name.includes("gpt") || desc.includes("claude") || desc.includes("gpt")) {
       targetGroups.push("claude");
-    }
-    if (name.includes("argon") || desc.includes("argon")) {
-      targetGroups.push("argon");
     }
 
     const weeklyRemaining = weeklyBucket?.remainingFraction !== undefined

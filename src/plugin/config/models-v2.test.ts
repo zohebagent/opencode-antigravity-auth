@@ -40,17 +40,18 @@ describe("OpenCode V2 models", () => {
       "gemini-3.8-flash-tiered": {},
       "gemini-3.1-flash-image": {},
       "gemini-2.5-pro": { selectable: false },
-      "gpt-oss-120b-medium": {},
+      "gpt-oss-120b-medium": { supportsImages: false },
       "tab_flash_lite_preview": {},
     })
-    expect(Object.keys(catalog)).toEqual(["antigravity-claude-opus-5-5-high", "antigravity-gemini-3.9-flash-medium", "antigravity-gpt-oss-120b-medium"])
+    // Single-tier model with explicit display-name effort is collapsed to the family base
+    expect(Object.keys(catalog)).toEqual(["antigravity-claude-opus-5-5-high", "antigravity-gemini-3.9-flash", "antigravity-gpt-oss-120b-medium"])
     expect(catalog["antigravity-claude-opus-5-5-high"]).toMatchObject({
       limit: { context: 1000000, output: 128000 },
       cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
       variants: [],
     })
     expect(catalog["antigravity-gpt-oss-120b-medium"]?.capabilities).toMatchObject({ tools: true, input: ["text"], output: ["text"] })
-    expect(resolveModelForHeaderStyle("antigravity-gemini-3.9-flash-medium", "antigravity").actualModel).toBe("gemini-3.9-flash-medium")
+    expect(resolveModelForHeaderStyle("antigravity-gemini-3.9-flash", "antigravity").actualModel).toBe("gemini-3.9-flash")
     expect(OPENCODE_V2_MODEL_DEFINITIONS["antigravity-gemini-3.8-flash-high"]).toBeDefined()
   })
 })

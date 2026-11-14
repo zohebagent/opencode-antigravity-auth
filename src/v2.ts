@@ -417,7 +417,7 @@ export const AntigravityV2Plugin = Plugin.define({
       const isForwarded = disposed && activeCredentialRunner && activeCredentialRunner !== runCredentialOperation
       const signal = AbortSignal.any([
         ...(!isForwarded ? [lifetime.signal, requestLifetime.signal] : []),
-        ...(init?.signal ? [init.signal] : input instanceof Request ? [input.signal] : []),
+        ...(init?.signal ? [init.signal] : input instanceof Request && input.signal ? [input.signal] : []),
       ])
       return outbound.run(original, () => interceptor.fetch(input instanceof URL ? input.toString() : input, { ...init, signal }))
     })
