@@ -22,12 +22,16 @@ export {
   resolveModelWithTier,
   resolveModelWithVariant,
   resolveModelForHeaderStyle,
+  resolveCollapsedModelTarget,
+  getCollapsedModelBaseId,
+  COLLAPSED_TIER_BODY_KEY,
+  COLLAPSED_MODEL_TIERS,
   getModelFamily,
   MODEL_ALIASES,
   THINKING_TIER_BUDGETS,
   GEMINI_3_THINKING_LEVELS,
 } from "./model-resolver";
-export type { VariantConfig } from "./model-resolver";
+export type { VariantConfig, CollapsedModelFamily, CollapsedModelTier, CollapsedModelTarget, DisplayReasoningLabel } from "./model-resolver";
 
 // Claude transforms
 export {
@@ -67,3 +71,11 @@ export {
   stripClaudeThinkingFields,
 } from "./cross-model-sanitizer";
 export type { SanitizerOptions } from "./cross-model-sanitizer";
+
+// Prompt signature neutralization (Issue #622 / PR #623)
+export {
+  OPENCODE_SIGNATURE_NEEDLE,
+  OPENCODE_SIGNATURE_REPLACEMENT,
+  sanitizeOpenCodePromptSignatureText,
+  sanitizeOpenCodePromptSignatureInPlace,
+} from "./prompt-signature";
