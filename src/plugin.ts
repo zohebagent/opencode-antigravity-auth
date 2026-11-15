@@ -2357,6 +2357,23 @@ export const createAntigravityPlugin = (providerId: string) => async (
                     shouldSwitchAccount = true;
                     break;
                   }
+
+                  const isSubscriptionRequired = (
+                    errorBodyText.includes("SUBSCRIPTION_REQUIRED") ||
+                    errorBodyText.includes("cloudaicompanion.googleapis.com") ||
+                    errorBodyText.includes("#3501")
+                  );
+
+                  if (isSubscriptionRequired && headerStyle === "gemini-cli") {
+                    // Disable gemini-cli quota fallback for this account (consumer account without Code Assist license)
+                    const subscriptionCooldownMs = 24 * 60 * 60 * 1000;
+                    accountManager.markRateLimited(account, subscriptionCooldownMs, family, "gemini-cli", model);
+                    pushDebug(`subscription-required: disabled gemini-cli quota for account ${account.index}`);
+                    log.info(`Account ${account.email || account.index} lacks Gemini Code Assist license; disabling gemini-cli quota fallback`);
+                    lastFailure = createFailureContext(response);
+                    shouldSwitchAccount = true;
+                    break;
+                  }
                 }
 
                 const shouldRetryEndpoint = (
