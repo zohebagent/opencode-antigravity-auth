@@ -665,21 +665,9 @@ The following Anthropic/Vertex AI features are **NOT supported**:
 
 ---
 
-## Known Upstream Backend Issues (Gemini 4 / Hydrogen Generation)
+## Known Upstream Backend Issues
 
-Google's backend services (`daily-cloudcode-pa.googleapis.com` and Code Assist routing) have known active server-side regressions tracked upstream in [google-antigravity/antigravity-cli issues](https://github.com/google-antigravity/antigravity-cli/issues?q=is%3Aissue+state%3Aopen+hydrogen) that cannot be resolved in client plugins and require upstream backend engineering fixes:
-
-1. **Subagent and Orchestrator Model Downgrades (#1551, #1548)**:
-   - Upstream subagent invocation rejects Gemini 4 slugs (`argon`, `hydrogen`, `carbon`) and automatically falls back / maps to legacy `gemini-3.8-flash-tiered`.
-   - The Carbon orchestrator routes active execution turns to Gemini 3.8 Flash rather than Gemini 4 Hydrogen.
-2. **Quota Tier Lockouts (#1541)**:
-   - Gemini 4 Hydrogen can be locked as "Unavailable (paid Pro and Ultra only)" on the Antigravity endpoint even when Code Assist correctly resolves the account as entitled to access.
-3. **Daily Host Stream Degradation and Token Injections (#1533)**:
-   - Intermittent `cachedContentTokenCount=0` drops, multi-shard stream splits, and `+701` server-side token injections occur intermittently on `daily-cloudcode-pa.googleapis.com`.
-4. **Tool-Call Parameter Serialization Corruption (#1529, #1561)**:
-   - Server-side parsing issues corrupt nested objects in dynamic parameters and binary media references.
-
-These behaviors originate on the upstream Google backend; client-side retry or auth rotation will not bypass them until resolved server-side.
+Certain model routing, quota lockouts, and streaming anomalies (notably on Gemini 4 / Hydrogen variants) originate upstream on Google's `daily-cloudcode-pa.googleapis.com` backend and are tracked in [google-antigravity/antigravity-cli issues](https://github.com/google-antigravity/antigravity-cli/issues?q=is%3Aissue+state%3Aopen+hydrogen). These server-side regressions cannot be resolved client-side and require Google backend fixes.
 
 ---
 

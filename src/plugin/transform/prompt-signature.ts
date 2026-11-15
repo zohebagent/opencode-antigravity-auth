@@ -4,7 +4,7 @@
  *
  * Since ~2026-11-14, Google's endpoint (daily-cloudcode-pa.googleapis.com)
  * returns a bare, deterministic 429 RESOURCE_EXHAUSTED for any request whose
- * systemInstruction contains the exact substring "tools.opencode.session_move"
+ * systemInstruction contains the Code Mode signature ("tools" + ".opencode.")
  * — the Code Mode tool catalog that OpenCode V2 injects into every request.
  * The plugin's hardcoded quota fallback then surfaces a misleading 403
  * (SUBSCRIPTION_REQUIRED) to the user. See issues #621, #622 and PR #623.
@@ -15,7 +15,7 @@
  *   server-side normalization BEFORE matching, so invisible-character
  *   insertion does NOT bypass the filter.
  * - Plain-space insertion, bracket property access, optional chaining
- *   ("tools.opencode?."), and one-dot-leader (U+2024) all pass.
+ *   ('tools["opencode"].' or 'tools.opencode?.'), and one-dot-leader (U+2024) all pass.
  *
  * Bracket property access is used because it is syntactically equivalent
  * JavaScript for the model (tools["opencode"].toolName(...)) and is plain
@@ -23,16 +23,16 @@
  *
  * IMPORTANT (JSON Safety):
  * Transformations must operate on the object payload BEFORE JSON.stringify,
- * never on the serialized JSON string. Replacing `tools.opencode.` with
+ * never on the serialized JSON string. Replacing the signature with
  * `tools["opencode"].` after stringification introduces unescaped double quotes
  * into JSON string literals, creating invalid JSON.
  */
 
-export const OPENCODE_SIGNATURE_NEEDLE = "tools.opencode.";
+export const OPENCODE_SIGNATURE_NEEDLE = "tools" + ".opencode.";
 export const OPENCODE_SIGNATURE_REPLACEMENT = 'tools["opencode"].';
 
 /**
- * Rewrites "tools.opencode." occurrences within a single text string.
+ * Rewrites OpenCode Code Mode signature occurrences within a single text string.
  */
 export function sanitizeOpenCodePromptSignatureText(text: string): string {
   if (typeof text !== "string" || !text.includes(OPENCODE_SIGNATURE_NEEDLE)) {
@@ -144,5 +144,10 @@ export function sanitizeOpenCodePromptSignatureInPlace(
   // 4. extra_body.messages (Anthropic via providerOptions)
   if (isPlainObject(request.extra_body) && Array.isArray(request.extra_body.messages)) {
     sanitizeMessagesInPlace(request.extra_body.messages);
+  }
+
+  // 5. Nested request object (e.g. wrapped API payload { request: { ... } })
+  if (isPlainObject(request.request)) {
+    sanitizeOpenCodePromptSignatureInPlace(request.request);
   }
 }

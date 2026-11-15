@@ -244,5 +244,20 @@ describe("prompt-signature unit tests", () => {
       expect(parsed.request.systemInstruction.parts[1].text).toBe('Catalog item 2: tools["opencode"].worktree_create');
       expect(parsed.request.contents[0].parts[0].text).toBe('Please call tools["opencode"].session_move');
     });
+
+    it("automatically unwraps and sanitizes wrapped request object", () => {
+      const wrapped: Record<string, unknown> = {
+        project: "test-proj",
+        request: {
+          systemInstruction: {
+            parts: [{ text: "tools.opencode.session_move" }],
+          },
+        },
+      };
+
+      sanitizeOpenCodePromptSignatureInPlace(wrapped);
+      const inner = wrapped.request as { systemInstruction: { parts: Array<{ text: string }> } };
+      expect(inner.systemInstruction.parts[0]?.text).toBe('tools["opencode"].session_move');
+    });
   });
 });
