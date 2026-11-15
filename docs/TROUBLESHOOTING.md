@@ -412,6 +412,17 @@ You don't need them. This plugin handles all Google OAuth.
 
 ---
 
+## Known Upstream Issues (Gemini 4 / Hydrogen Generation)
+
+Several issues on the `daily-cloudcode-pa.googleapis.com` backend are active upstream regressions tracked in [google-antigravity/antigravity-cli issues (hydrogen filter)](https://github.com/google-antigravity/antigravity-cli/issues?q=is%3Aissue+state%3Aopen+hydrogen). These require server-side deployment fixes by the backend engineering team:
+
+- **Model Routing Fallbacks (#1551, #1548)**: Requests or subagents referencing Gemini 4 slugs (`argon`, `hydrogen`, `carbon`) are rejected or automatically downgraded upstream to `gemini-3.8-flash-tiered`.
+- **False Quota / Tier Lockouts (#1541)**: Certain accounts report Gemini 4 Hydrogen as unavailable despite valid Code Assist entitlement.
+- **Stream Inconsistencies & Cache Drops (#1533)**: Intermittent multi-shard streaming splits and cache-token reset drops on the daily host.
+- **Nested Tool Argument Corruption (#1529)**: Complex nested object structures in dynamic MCP tool calls encountering backend deserialization errors.
+
+---
+
 ## Migration Guides
 
 ### v1.2.8+ (Variants)
