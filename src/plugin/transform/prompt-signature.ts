@@ -142,7 +142,7 @@ export function sanitizeOpenCodePromptSignatureInPlace(
   }
 
   // 4. extra_body.messages (Anthropic via providerOptions)
-  if (isPlainObject(request.extra_body) && Array.isArray((request.extra_body as any).messages)) {
-    sanitizeMessagesInPlace((request.extra_body as any).messages);
+  if (isPlainObject(request.extra_body) && Array.isArray(request.extra_body.messages)) {
+    sanitizeMessagesInPlace(request.extra_body.messages);
   }
 }

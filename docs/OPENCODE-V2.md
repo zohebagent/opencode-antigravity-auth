@@ -14,7 +14,7 @@ APIs; upgrading that SDK alone does not make a V1 plugin run in V2.
 ```
 
 Published V2 releases use this package entry. To test an unreleased
-checkout, run `npm ci && npm run build` and put its absolute directory in
+checkout, run `pnpm install && pnpm run build` and put its absolute directory in
 `plugins` instead of the npm package name.
 
 Models are discovered from the enabled accounts' `fetchAvailableModels` response.
@@ -123,10 +123,10 @@ is no longer usable and a fresh login is needed.
 ## Verification
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-OPENCODE_BIN=/absolute/path/to/opencode npm run test:e2e:v2
+pnpm run typecheck
+pnpm test
+pnpm run build
+OPENCODE_BIN=/absolute/path/to/opencode pnpm run test:e2e:v2
 ```
 
 The V2 runtime test runs the actual CLI in temporary config, data, state, and

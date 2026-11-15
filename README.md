@@ -31,7 +31,7 @@ opencode auth login google
 
 Choose **Google OAuth (Antigravity)**. Existing accounts are reused.
 
-To use a local checkout, run `npm ci && npm run build` and replace the package name above with the checkout's absolute path.
+To use a local checkout, run `pnpm install && pnpm run build` and replace the package name above with the checkout's absolute path.
 
 ## Use
 
@@ -58,11 +58,11 @@ Accounts are stored in `~/.config/opencode/antigravity-accounts.json`. Back up t
 ## Development
 
 ```sh
-npm ci
-npm run typecheck
-npm test
-npm run build
-OPENCODE_BIN=/path/to/opencode npm run test:e2e:v2
+pnpm install
+pnpm run typecheck
+pnpm test
+pnpm run build
+OPENCODE_BIN=/path/to/opencode pnpm run test:e2e:v2
 ```
 
 The runtime test uses synthetic credentials. Authenticated model and menu checks require a logged-in Google account.

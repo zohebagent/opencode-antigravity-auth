@@ -9,20 +9,20 @@ OpenCode plugin for Google Antigravity OAuth. Intercepts `fetch()` calls to `gen
 ## Build & Test Commands
 
 ```bash
-npm install                          # Install dependencies
-npm run build                        # Compile (tsc -p tsconfig.build.json)
-npm run typecheck                    # Type-check only (tsc --noEmit)
-npm test                             # Run all tests (vitest run)
-npx vitest run src/plugin/auth.test.ts          # Single test file
-npx vitest run -t "test name here"              # Single test by name
-npx vitest --watch src/plugin/auth.test.ts      # Watch mode, single file
-npm run test:coverage                # Coverage report
-npm run test:e2e:models              # E2E: model availability check
-npm run test:e2e:regression          # E2E: regression suite
+pnpm install                         # Install dependencies
+pnpm run build                       # Compile (tsc -p tsconfig.build.json)
+pnpm run typecheck                   # Type-check only (tsc --noEmit)
+pnpm test                            # Run all tests (vitest run)
+pnpm exec vitest run src/plugin/auth.test.ts   # Single test file
+pnpm exec vitest run -t "test name here"       # Single test by name
+pnpm exec vitest --watch src/plugin/auth.test.ts # Watch mode, single file
+pnpm run test:coverage               # Coverage report
+pnpm run test:e2e:models             # E2E: model availability check
+pnpm run test:e2e:regression         # E2E: regression suite
 ```
 
 > **IMPORTANT — In-Flight Build Hazard:**
-> Never run `npm run build` (`pnpm build`) while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Error: Plugin instance disposed`. When rebuilding `dist/`, switch to another provider model first or reload config & restart OpenCode after building.
+> Never run `pnpm run build` while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Error: Plugin instance disposed`. When rebuilding `dist/`, switch to another provider model first or reload config & restart OpenCode after building.
 
 No linter or formatter is configured. Style is enforced by convention (see below).
 
@@ -100,6 +100,11 @@ src/
     ├── storage.ts           # Persistent storage schemas (Zod)
     ├── fingerprint.ts       # Device fingerprint generation & headers
     ├── project.ts           # Managed project context resolution
+    ├── transform/           # Prompt signature & model transformers
+    │   ├── prompt-signature.ts # Neutralizes OpenCode Code Mode signatures (#622)
+    │   ├── gemini.ts        # Gemini payload transformation
+    │   ├── claude.ts        # Claude payload transformation
+    │   └── model-resolver.ts# Model tier and variant resolution
     └── debug.ts             # Debug logging utilities
 ```
 
@@ -122,6 +127,9 @@ Accounts rotate on rate limits. Gemini has dual quota pools (Antigravity headers
 
 ### 6. Fingerprint System
 Per-account device fingerprints stored in `antigravity-accounts.json`. Each fingerprint includes deviceId, sessionToken, userAgent, and a reduced clientMetadata (ideType, platform, pluginType — no osVersion, arch, or sqmId). The only header composed is `User-Agent`, built by `buildFingerprintHeaders()` in `fingerprint.ts` and applied on the antigravity request path in `request.ts`. History tracked (max 5), restorable.
+
+### 7. Prompt Signature Neutralization
+Google's daily host rejects requests containing the exact `tools["opencode"].session_move` Code Mode signature with a bare 429. The plugin neutralizes this signature to bracket property access (`tools["opencode"].`) in `systemInstruction` and `contents` before serialization, bypassing the filter while maintaining tool invocation capability.
 
 ## Dependencies
 
