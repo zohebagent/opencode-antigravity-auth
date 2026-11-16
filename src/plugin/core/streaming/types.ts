@@ -21,7 +21,6 @@ export interface StreamingOptions {
   signatureSessionKey?: string;
   debugText?: string;
   cacheSignatures?: boolean;
-  displayedThinkingHashes?: Set<string>;
   // Note: injectSyntheticThinking removed - keep_thinking now unified with debug via debugText
 }
 

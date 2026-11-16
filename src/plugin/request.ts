@@ -81,8 +81,6 @@ const log = createLogger("request");
 
 const PLUGIN_SESSION_ID = `-${crypto.randomUUID()}`;
 
-const sessionDisplayedThinkingHashes = new Set<string>();
-
 const MIN_SIGNATURE_LENGTH = 50;
 
 function buildSignatureSessionKey(
@@ -1816,6 +1814,9 @@ export async function transformAntigravityResponse(
       : getKeepThinking()
         ? SYNTHETIC_THINKING_PLACEHOLDER
         : undefined;
+  const isClaude =
+    (typeof effectiveModel === "string" && isClaudeModel(effectiveModel)) ||
+    (typeof requestedModel === "string" && isClaudeModel(requestedModel));
   const cacheSignatures = shouldCacheThinkingSignatures(effectiveModel);
 
   if (!isJsonResponse && !isEventStreamResponse) {
@@ -1841,13 +1842,12 @@ export async function transformAntigravityResponse(
         onCacheSignature: cacheSignature,
         onInjectDebug: injectDebugThinking,
         // onInjectSyntheticThinking removed - keep_thinking now uses debugText path
-        transformThinkingParts,
+        transformThinkingParts: isClaude ? transformThinkingParts : undefined,
       },
       {
         signatureSessionKey: sessionId,
         debugText,
         cacheSignatures,
-        displayedThinkingHashes: effectiveModel && isGemini3Model(effectiveModel) ? sessionDisplayedThinkingHashes : undefined,
         // injectSyntheticThinking removed - keep_thinking now unified with debug via debugText
       },
     );
@@ -1995,7 +1995,7 @@ export async function transformAntigravityResponse(
       if (debugText) {
         responseBody = injectDebugThinking(responseBody, debugText);
       }
-      const transformed = transformThinkingParts(responseBody);
+      const transformed = isClaude ? transformThinkingParts(responseBody) : responseBody;
       return new Response(JSON.stringify(transformed), init);
     }
 
