@@ -81,8 +81,6 @@ const log = createLogger("request");
 
 const PLUGIN_SESSION_ID = `-${crypto.randomUUID()}`;
 
-const sessionDisplayedThinkingHashes = new Set<string>();
-
 const MIN_SIGNATURE_LENGTH = 50;
 
 function buildSignatureSessionKey(
@@ -1847,7 +1845,6 @@ export async function transformAntigravityResponse(
         signatureSessionKey: sessionId,
         debugText,
         cacheSignatures,
-        displayedThinkingHashes: effectiveModel && isGemini3Model(effectiveModel) ? sessionDisplayedThinkingHashes : undefined,
         // injectSyntheticThinking removed - keep_thinking now unified with debug via debugText
       },
     );
