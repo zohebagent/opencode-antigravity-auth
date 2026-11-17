@@ -29,11 +29,14 @@ export function isClaudeModel(model: string): boolean {
 }
 
 /**
- * Check if a model is a Claude thinking model.
+ * Check if a model is a Claude thinking model (explicit -thinking or tiered 5.5 suffix).
  */
 export function isClaudeThinkingModel(model: string): boolean {
   const lower = model.toLowerCase();
-  return lower.includes("claude") && lower.includes("thinking");
+  return lower.includes("claude") && (
+    lower.includes("thinking") ||
+    /-(minimal|low|medium|high|xhigh)$/.test(lower)
+  );
 }
 
 /**

@@ -63,8 +63,15 @@ describe("isClaudeThinkingModel", () => {
     expect(isClaudeThinkingModel("google/claude-opus-4-5-thinking-high")).toBe(true);
   });
 
+  it("returns true for tiered Claude 5.5 models", () => {
+    expect(isClaudeThinkingModel("claude-opus-5-5-high")).toBe(true);
+    expect(isClaudeThinkingModel("claude-sonnet-5-5-medium")).toBe(true);
+    expect(isClaudeThinkingModel("antigravity-claude-sonnet-5-5-low")).toBe(true);
+  });
+
   it("returns false for non-thinking claude models", () => {
     expect(isClaudeThinkingModel("claude-sonnet-4-5")).toBe(false);
+    expect(isClaudeThinkingModel("claude-sonnet-4-6")).toBe(false);
     expect(isClaudeThinkingModel("claude-opus-4-5")).toBe(false);
     expect(isClaudeThinkingModel("claude-3-opus")).toBe(false);
   });

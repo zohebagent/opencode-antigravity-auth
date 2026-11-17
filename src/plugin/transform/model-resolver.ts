@@ -126,7 +126,10 @@ function supportsThinkingTiers(model: string): boolean {
     lower.includes("gemini-3") ||
     lower.includes("gemini-4") ||
     lower.includes("gemini-2.5") ||
-    (lower.includes("claude") && lower.includes("thinking"))
+    (lower.includes("claude") && (
+      lower.includes("thinking") ||
+      isAdvertisedTierSuffixModel(lower)
+    ))
   );
 }
 
@@ -168,7 +171,8 @@ function isThinkingCapableModel(model: string): boolean {
     lower.includes("thinking") ||
     lower.includes("gemini-3") ||
     lower.includes("gemini-4") ||
-    lower.includes("gemini-2.5")
+    lower.includes("gemini-2.5") ||
+    (lower.includes("claude") && TIER_REGEX.test(lower))
   );
 }
 
@@ -276,7 +280,10 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
 
   // Check if this is a Gemini 3/4 model (works for both aliased and skipAlias paths)
   const usesLevel = usesThinkingLevel(resolvedModel);
-  const isClaudeThinking = resolvedModel.toLowerCase().includes("claude") && resolvedModel.toLowerCase().includes("thinking");
+  const isClaudeThinking = resolvedModel.toLowerCase().includes("claude") && (
+    resolvedModel.toLowerCase().includes("thinking") ||
+    TIER_REGEX.test(resolvedModel.toLowerCase())
+  );
 
   if (!tier) {
     // Gemini 3/4 models without explicit tier get a default thinkingLevel
@@ -483,10 +490,10 @@ export function resolveModelWithVariant(
 export type CollapsedModelTier = string;
 
 /** Canonical ordering used when presenting known synthesized variants. */
-export const COLLAPSED_MODEL_TIERS: readonly CollapsedModelTier[] = ["minimal", "low", "medium", "high"];
+export const COLLAPSED_MODEL_TIERS: readonly CollapsedModelTier[] = ["minimal", "low", "medium", "high", "xhigh"];
 
 const STANDARD_THINKING_LEVELS = new Set<string>(COLLAPSED_MODEL_TIERS);
-const COLLAPSED_TIER_REGEX = /-(minimal|low|medium|high)$/i;
+const COLLAPSED_TIER_REGEX = /-(minimal|low|medium|high|xhigh)$/i;
 
 /**
  * Normalizes a display or effort label into a stable slug:

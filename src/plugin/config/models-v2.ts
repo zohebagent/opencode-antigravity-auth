@@ -37,7 +37,7 @@ function familyKey(value: string): string {
 /** Returns the standard Gemini thinking level for an effort slug. */
 function standardThinkingLevel(id: string): ModelThinkingLevel | undefined {
   const normalized = id.trim().toLowerCase()
-  return normalized === "minimal" || normalized === "low" || normalized === "medium" || normalized === "high"
+  return normalized === "minimal" || normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "xhigh"
     ? normalized
     : undefined
 }
@@ -184,9 +184,9 @@ interface CollapsedPlan {
 /** Removes a trailing standard tier label from a display name. */
 function stripTierLabel(name: string): string {
   return name
-    .replace(/\s*[\(\[]\s*(?:minimal|low|medium|high)\s*[\)\]]\s*$/i, "")
-    .replace(/\s*[-–—:]\s*(?:minimal|low|medium|high)\s*$/i, "")
-    .replace(/\s+(?:minimal|low|medium|high)\s*$/i, "")
+    .replace(/\s*[\(\[]\s*(?:minimal|low|medium|high|xhigh)\s*[\)\]]\s*$/i, "")
+    .replace(/\s*[-–—:]\s*(?:minimal|low|medium|high|xhigh)\s*$/i, "")
+    .replace(/\s+(?:minimal|low|medium|high|xhigh)\s*$/i, "")
     .trim()
 }
 

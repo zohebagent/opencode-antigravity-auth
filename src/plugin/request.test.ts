@@ -7,6 +7,7 @@ import {
   __testExports,
 } from "./request";
 import { DEFAULT_CONFIG } from "./config";
+import { buildAccountModelDefinitions } from "./config/models-v2";
 import { initializeDebug } from "./debug";
 import { SKIP_THOUGHT_SIGNATURE, getAntigravityUserAgent } from "../constants";
 import * as config from "./config";
@@ -1449,6 +1450,192 @@ it("removes x-api-key header", () => {
           "session-1",
         ),
       ).rejects.toMatchObject({ message: "THINKING_RECOVERY_NEEDED" });
+    });
+  });
+
+  describe("OpenCode v2 thinkingConfig generation", () => {
+    const mockAccessToken = "test-access-token";
+    const mockProjectId = "test-project-id";
+
+    it("enables includeThoughts: true when OpenCode v2 variant sends thinkingLevel without includeThoughts", () => {
+      const result = prepareAntigravityRequest(
+        "https://generativelanguage.googleapis.com/v1beta/models/antigravity-gemini-3-flash:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+            generationConfig: { thinkingConfig: { thinkingLevel: "high" } },
+          }),
+        },
+        mockAccessToken,
+        mockProjectId,
+      );
+
+      const parsed = JSON.parse(result.init.body as string);
+      expect(parsed.request.generationConfig.thinkingConfig).toEqual({
+        includeThoughts: true,
+        thinkingLevel: "high",
+      });
+    });
+
+    it("preserves explicit includeThoughts: false when caller disables thoughts", () => {
+      const result = prepareAntigravityRequest(
+        "https://generativelanguage.googleapis.com/v1beta/models/antigravity-gemini-3-flash:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+            generationConfig: { thinkingConfig: { includeThoughts: false, thinkingLevel: "high" } },
+          }),
+        },
+        mockAccessToken,
+        mockProjectId,
+      );
+
+      const parsed = JSON.parse(result.init.body as string);
+      expect(parsed.request.generationConfig.thinkingConfig).toEqual({
+        includeThoughts: false,
+        thinkingLevel: "high",
+      });
+    });
+
+    it("enables includeThoughts: true for Gemini 4 Argon and Hydrogen (including xhigh)", () => {
+      const argon = prepareAntigravityRequest(
+        "https://generativelanguage.googleapis.com/v1beta/models/antigravity-gemini-4-argon-high:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          }),
+        },
+        mockAccessToken,
+        mockProjectId,
+      );
+      expect(JSON.parse(argon.init.body as string).request.generationConfig.thinkingConfig).toEqual({
+        includeThoughts: true,
+        thinkingLevel: "high",
+      });
+
+      const hydrogen = prepareAntigravityRequest(
+        "https://generativelanguage.googleapis.com/v1beta/models/antigravity-gemini-4-hydrogen-xhigh:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          }),
+        },
+        mockAccessToken,
+        mockProjectId,
+      );
+      expect(JSON.parse(hydrogen.init.body as string).request.generationConfig.thinkingConfig).toEqual({
+        includeThoughts: true,
+        thinkingLevel: "xhigh",
+      });
+    });
+
+    it("sends snake_case include_thoughts and thinking_budget for tiered Claude 5.5 models", () => {
+      for (const modelId of ["antigravity-claude-opus-5-5-high", "antigravity-claude-sonnet-5-5-high"]) {
+        const result = prepareAntigravityRequest(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: "hello" }] }],
+            }),
+          },
+          mockAccessToken,
+          mockProjectId,
+        );
+        const parsed = JSON.parse(result.init.body as string);
+        expect(parsed.request.generationConfig.thinkingConfig).toEqual({
+          include_thoughts: true,
+          thinking_budget: 32768,
+        });
+        expect(parsed.request.generationConfig.maxOutputTokens).toBe(64000);
+      }
+    });
+
+    it("does not inject thinkingConfig for non-thinking Claude Sonnet 4.6 or GPT-OSS", () => {
+      for (const modelId of ["antigravity-claude-sonnet-4-6", "antigravity-gpt-oss-120b-medium"]) {
+        const result = prepareAntigravityRequest(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: "hello" }] }],
+            }),
+          },
+          mockAccessToken,
+          mockProjectId,
+        );
+        const parsed = JSON.parse(result.init.body as string);
+        expect(parsed.request.generationConfig?.thinkingConfig).toBeUndefined();
+      }
+    });
+
+    it("enables thoughts for collapsed OpenCode v2 variants across Gemini 3.8, Gemini 4, and Claude 5.5", () => {
+      const defs = buildAccountModelDefinitions({
+        "gemini-3.8-flash-low": { displayName: "Gemini 3.8 Flash (Low)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-3.8-flash-medium": { displayName: "Gemini 3.8 Flash (Medium)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-3.8-flash-high": { displayName: "Gemini 3.8 Flash (High)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-4-argon-low": { displayName: "Gemini 4 Argon (Low)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-4-argon-high": { displayName: "Gemini 4 Argon (High)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-4-hydrogen-high": { displayName: "Gemini 4 Hydrogen (High)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "gemini-4-hydrogen-xhigh": { displayName: "Gemini 4 Hydrogen (Extra)", maxTokens: 1048576, maxOutputTokens: 65536 },
+        "claude-opus-5-5-low": { displayName: "Claude Opus 5.5 (Low)", maxTokens: 1000000, maxOutputTokens: 128000 },
+        "claude-opus-5-5-high": { displayName: "Claude Opus 5.5 (High)", maxTokens: 1000000, maxOutputTokens: 128000 },
+        "claude-sonnet-5-5-low": { displayName: "Claude Sonnet 5.5 (Low)", maxTokens: 1000000, maxOutputTokens: 128000 },
+        "claude-sonnet-5-5-high": { displayName: "Claude Sonnet 5.5 (High)", maxTokens: 1000000, maxOutputTokens: 128000 },
+      });
+
+      const sendVariant = (modelId: string, variantId: string) => {
+        const variant = defs[modelId]?.variants?.find((v) => v.id === variantId);
+        expect(variant).toBeDefined();
+        const settings = variant?.settings as { thinkingConfig?: Record<string, unknown> } | undefined;
+        const body = {
+          contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          ...(settings?.thinkingConfig ? { generationConfig: { thinkingConfig: settings.thinkingConfig } } : {}),
+          ...(variant?.body ?? {}),
+        };
+        const result = prepareAntigravityRequest(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent?alt=sse`,
+          { method: "POST", body: JSON.stringify(body) },
+          mockAccessToken,
+          mockProjectId,
+        );
+        return JSON.parse(result.init.body as string);
+      };
+
+      expect(sendVariant("antigravity-gemini-3.8-flash", "medium")).toMatchObject({
+        model: "gemini-3.8-flash-medium",
+        request: { generationConfig: { thinkingConfig: { includeThoughts: true, thinkingLevel: "medium" } } },
+      });
+      expect(sendVariant("antigravity-gemini-4-argon", "high")).toMatchObject({
+        model: "gemini-4-argon-high",
+        request: { generationConfig: { thinkingConfig: { includeThoughts: true, thinkingLevel: "high" } } },
+      });
+      expect(sendVariant("antigravity-gemini-4-hydrogen", "extra")).toMatchObject({
+        model: "gemini-4-hydrogen-xhigh",
+        request: { generationConfig: { thinkingConfig: { includeThoughts: true } } },
+      });
+      expect(sendVariant("antigravity-claude-opus-5-5", "high")).toMatchObject({
+        model: "claude-opus-5-5-high",
+        request: {
+          generationConfig: {
+            maxOutputTokens: 64000,
+            thinkingConfig: { include_thoughts: true, thinking_budget: 32768 },
+          },
+        },
+      });
+      expect(sendVariant("antigravity-claude-sonnet-5-5", "high")).toMatchObject({
+        model: "claude-sonnet-5-5-high",
+        request: {
+          generationConfig: {
+            maxOutputTokens: 64000,
+            thinkingConfig: { include_thoughts: true, thinking_budget: 32768 },
+          },
+        },
+      });
     });
   });
 });

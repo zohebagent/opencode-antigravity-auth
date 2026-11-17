@@ -803,13 +803,16 @@ export const DEFAULT_THINKING_BUDGET = 16000;
 
 /**
  * Checks if a model name indicates thinking/reasoning capability.
- * Models with "thinking", "gemini-3", or "opus" in their name support extended thinking.
+ * Models with "thinking", "gemini-3", "gemini-4", "opus", or tiered Claude
+ * effort suffixes support extended thinking.
  */
 export function isThinkingCapableModel(modelName: string): boolean {
   const lowerModel = modelName.toLowerCase();
   return lowerModel.includes("thinking")
     || lowerModel.includes("gemini-3")
-    || lowerModel.includes("opus");
+    || lowerModel.includes("gemini-4")
+    || lowerModel.includes("opus")
+    || (lowerModel.includes("claude") && /-(minimal|low|medium|high|xhigh)$/.test(lowerModel));
 }
 
 /**
@@ -827,9 +830,13 @@ export function extractThinkingConfig(
 
   if (thinkingConfig && typeof thinkingConfig === "object") {
     const config = thinkingConfig as Record<string, unknown>;
+    const rawInclude = config.includeThoughts ?? config.include_thoughts;
+    const rawBudget = config.thinkingBudget ?? config.thinking_budget;
     return {
-      includeThoughts: Boolean(config.includeThoughts),
-      thinkingBudget: typeof config.thinkingBudget === "number" ? config.thinkingBudget : DEFAULT_THINKING_BUDGET,
+      // Default to true when thinkingConfig is provided (e.g. OpenCode v2 variant
+      // thinkingLevel/thinkingBudget) unless the caller explicitly sets false.
+      includeThoughts: typeof rawInclude === "boolean" ? rawInclude : true,
+      thinkingBudget: typeof rawBudget === "number" ? rawBudget : DEFAULT_THINKING_BUDGET,
     };
   }
 

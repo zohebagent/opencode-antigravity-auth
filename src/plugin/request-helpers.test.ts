@@ -182,8 +182,17 @@ describe("isThinkingCapableModel", () => {
     expect(isThinkingCapableModel("OPUS")).toBe(true);
   });
 
+  it("returns true for Gemini 4 and tiered Claude 5.5 models", () => {
+    expect(isThinkingCapableModel("gemini-4-argon-high")).toBe(true);
+    expect(isThinkingCapableModel("gemini-4-carbon-medium")).toBe(true);
+    expect(isThinkingCapableModel("gemini-4-hydrogen-xhigh")).toBe(true);
+    expect(isThinkingCapableModel("claude-sonnet-5-5-high")).toBe(true);
+    expect(isThinkingCapableModel("claude-opus-5-5-low")).toBe(true);
+  });
+
   it("returns false for non-thinking models", () => {
     expect(isThinkingCapableModel("claude-sonnet")).toBe(false);
+    expect(isThinkingCapableModel("claude-sonnet-4-6")).toBe(false);
     expect(isThinkingCapableModel("gemini-2-pro")).toBe(false);
     expect(isThinkingCapableModel("gpt-4")).toBe(false);
   });
@@ -255,6 +264,34 @@ describe("extractThinkingConfig", () => {
       undefined,
     );
     expect(result).toEqual({ includeThoughts: true, thinkingBudget: DEFAULT_THINKING_BUDGET });
+  });
+
+  it("defaults includeThoughts to true when thinkingConfig omits includeThoughts (OpenCode v2 variants)", () => {
+    expect(extractThinkingConfig(
+      {},
+      { thinkingConfig: { thinkingLevel: "high" } },
+      undefined,
+    )).toEqual({ includeThoughts: true, thinkingBudget: DEFAULT_THINKING_BUDGET });
+
+    expect(extractThinkingConfig(
+      {},
+      { thinkingConfig: { thinkingBudget: 32768 } },
+      undefined,
+    )).toEqual({ includeThoughts: true, thinkingBudget: 32768 });
+  });
+
+  it("preserves explicit includeThoughts: false and include_thoughts: false", () => {
+    expect(extractThinkingConfig(
+      {},
+      { thinkingConfig: { includeThoughts: false, thinkingLevel: "high" } },
+      undefined,
+    )).toEqual({ includeThoughts: false, thinkingBudget: DEFAULT_THINKING_BUDGET });
+
+    expect(extractThinkingConfig(
+      {},
+      { thinkingConfig: { include_thoughts: false, thinking_budget: 8192 } },
+      undefined,
+    )).toEqual({ includeThoughts: false, thinkingBudget: 8192 });
   });
 });
 

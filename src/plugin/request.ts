@@ -1157,6 +1157,19 @@ export function prepareAntigravityRequest(
             parts: [{ text: "You are an AI image generator. Generate images based on user descriptions. Focus on creating high-quality, visually appealing images that match the user's request." }]
           };
         } else {
+          if (suppressThinkingConfig && isGemini3) {
+            // Non-standard Gemini 3/4 effort labels (e.g. "extra") ride on the
+            // concrete backend model ID without an explicit thinkingLevel, while
+            // still requesting thought summaries unless explicitly disabled.
+            const includeThoughts = effectiveUserThinkingConfig?.includeThoughts ?? true;
+            const thinkingConfig: Record<string, unknown> = { includeThoughts };
+            if (rawGenerationConfig) {
+              rawGenerationConfig.thinkingConfig = thinkingConfig;
+              requestPayload.generationConfig = rawGenerationConfig;
+            } else {
+              requestPayload.generationConfig = { thinkingConfig };
+            }
+          } else {
           const finalThinkingConfig = suppressThinkingConfig
             ? undefined
             : resolveThinkingConfig(
@@ -1223,6 +1236,7 @@ export function prepareAntigravityRequest(
           } else if (rawGenerationConfig?.thinkingConfig) {
             delete rawGenerationConfig.thinkingConfig;
             requestPayload.generationConfig = rawGenerationConfig;
+          }
           }
         } // End of else block for non-image models
 
