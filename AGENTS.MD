@@ -10,7 +10,7 @@ OpenCode plugin for Google Antigravity OAuth. Intercepts `fetch()` calls to `gen
 
 ```bash
 pnpm install                         # Install dependencies
-pnpm run build                       # Compile (tsc -p tsconfig.build.json)
+pnpm run build                       # Bundle via tsup (~80ms, emits dist/index.js & dist/src/tui.js)
 pnpm run typecheck                   # Type-check only (tsc --noEmit)
 pnpm test                            # Run all tests (vitest run)
 pnpm exec vitest run src/plugin/auth.test.ts   # Single test file
@@ -22,17 +22,20 @@ pnpm run test:e2e:regression         # E2E: regression suite
 ```
 
 > **IMPORTANT — In-Flight Build Hazard:**
-> Never run `pnpm run build` while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Antigravity plugin has been disposed`. Furthermore, OpenCode Desktop's Electron/Node process caches loaded plugin modules in memory — after rebuilding `dist/` outside an active turn, fully restart OpenCode Desktop so the freshly compiled bundle takes effect.
+> Never run `pnpm run build` while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Antigravity plugin has been disposed`. When rebuilding outside an active Antigravity session, `tsup` bundles the entire 67-module source into 2 production files in under 100ms.
 
 No linter or formatter is configured. Style is enforced by convention (see below).
 
-## TypeScript Configuration
+## TypeScript & Build Configuration
 
 - `strict: true` with extra strictness: `noUncheckedIndexedAccess`, `noImplicitOverride`, `noFallthroughCasesInSwitch`
+- `erasableSyntaxOnly: true` (TypeScript 5.8+) — enforces standard erasable syntax with zero non-standard runtime constructs
 - `verbatimModuleSyntax: true` — use `import type` for type-only imports
 - `target: ESNext`, `module: Preserve`, `moduleResolution: bundler`
 - `allowImportingTsExtensions: true` — use `.ts` extensions in imports
 - No path aliases — all imports are relative
+- Bundler: `tsup` configured in `tsup.config.ts`, bundling `index.ts` -> `dist/index.js` and `src/tui.ts` -> `dist/src/tui.js` with sourcemaps and dts disabled for maximum cold-HDD startup performance.
+- Storage Invariant: In `src/plugin/storage.ts`, persistence operations (`saveAccounts`, `updateAccounts`, `saveAccountsReplace`) MUST use `fs.copyFile` followed by `fs.unlink(tempPath)` rather than `fs.rename` to permanently preserve NTFS hardlinks across Windows user accounts (`Administrator` and `Zoheb`).
 
 ## Code Style
 
