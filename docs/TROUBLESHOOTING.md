@@ -72,32 +72,34 @@ opencode auth login
 
 **Windows (PowerShell):**
 ```powershell
-Remove-Item "$env:APPDATA\opencode\antigravity-accounts.json" -Force -ErrorAction SilentlyContinue
-Remove-Item "$env:LOCALAPPDATA\opencode\Cache\node_modules\opencode-antigravity-auth" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILE\.config\opencode\antigravity-accounts.json" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILE\.cache\opencode\node_modules\opencode-antigravity-auth" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item "$env:USERPROFILE\.bun\install\cache\opencode-antigravity-auth*" -Recurse -Force -ErrorAction SilentlyContinue
 opencode auth login
 ```
 
+### Thinking / Reasoning Not Visible or Collapsed in OpenCode Desktop
+
+1. **Check Desktop Timeline settings:** Open **Settings → General → Timeline → Advanced** and toggle **Collapse** OFF for **Thinking** (or move the **Timeline detail** slider toward **Detailed** / **Everything**) so thought blocks display expanded instead of folded into `"Working..."`.
+2. **Local checkout rebuilds:** If you load this plugin from a local directory, OpenCode Desktop executes compiled files from `dist/` and caches loaded modules in the Electron/Node process. After pulling or editing `src/`:
+   - Run `pnpm run build` in an external terminal (never during an active Antigravity turn, which triggers Desktop's watcher reload and throws `Antigravity plugin has been disposed`).
+   - Fully quit and restart OpenCode Desktop so the new `dist/` bundle is loaded.
+
 ### "Model not found"
-Add this to your `google` provider config:
-```json
-"npm": "@ai-sdk/google"
-```
+In OpenCode V2, refresh the live catalog via `/antigravity` → **Refresh available models** and select a `google/antigravity-*` model. (For legacy V1 configs, ensure `"npm": "@ai-sdk/google"` is set under `provider.google`.)
 
 ### Session errors
 Type `continue` to trigger auto-recovery, or use `/undo` to roll back.
 
-### Configuration Key Typo
+### Configuration Key (`plugins` vs `plugin`)
 
-The correct key is `plugin` (singular):
-
-```json
-{
-  "plugin": ["opencode-antigravity-auth@latest"]
-}
-```
-
-**Not** `"plugins"` (will cause "Unrecognized key" error).
+- **OpenCode V2 (2.x):** Use plural `"plugins"` (and `"providers"`):
+  ```json
+  {
+    "plugins": ["opencode-antigravity-auth@latest"]
+  }
+  ```
+- **Legacy OpenCode V1 (1.18.29+):** Used singular `"plugin"`.
 
 ### "Invalid SemVer: beta"
 

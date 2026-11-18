@@ -1,8 +1,8 @@
 # Architecture Guide
 
-**Last Updated:** April 2026
+**Last Updated:** November 2026
 
-This document explains how the Antigravity plugin works: request/response flow, Claude-specific handling, and session recovery.
+This document explains how the Antigravity plugin works: OpenCode V2 integration, request/response flow, thinking/reasoning streaming, Claude-specific handling, and session recovery.
 
 ---
 
@@ -26,25 +26,39 @@ The plugin intercepts requests to `generativelanguage.googleapis.com`, transform
 ## Module Structure
 
 ```
+index.ts                     # Package entrypoint (OpenCode V2 default + V1 server)
 src/
-├── index.ts                 # Plugin exports
-├── plugin.ts                # Main entry, fetch interceptor
-├── constants.ts             # Endpoints, headers, config
+├── v2.ts                    # OpenCode V2 plugin adapter & AI SDK 3 transport bridge
+├── tui.ts                   # /antigravity (/ag) TUI command entrypoint
+├── quota-dialog.tsx         # Interactive scrollable quota dialog
+├── plugin.ts                # Core fetch interceptor & multi-account retry loop
+├── constants.ts             # Endpoints, Hub headers, config
 ├── antigravity/
 │   └── oauth.ts             # OAuth token exchange
 └── plugin/
     ├── auth.ts              # Token validation & refresh
-    ├── request.ts           # Request transformation (main logic)
-    ├── request-helpers.ts   # Schema cleaning, thinking filters
+    ├── request.ts           # Request & response transformation (core logic)
+    ├── request-helpers.ts   # Schema cleaning, thinking config, response normalization
     ├── thinking-recovery.ts # Turn boundary detection, crash recovery
-    ├── recovery.ts          # Session recovery (tool_result_missing)
-    ├── quota.ts             # Quota checking (API usage stats)
+    ├── recovery.ts          # Legacy V1 session recovery (tool_result_missing)
+    ├── quota.ts             # Quota checking (5-hour & weekly buckets)
     ├── cache.ts             # Auth & signature caching
     ├── cache/
     │   └── signature-cache.ts # Disk-based signature persistence
     ├── config/
     │   ├── schema.ts        # Zod config schema
-    │   └── loader.ts        # Config file loading
+    │   ├── loader.ts        # Config loading (machine / user / project)
+    │   └── models-v2.ts     # Collapsed V2 model catalog & variant synthesis
+    ├── core/streaming/
+    │   └── transformer.ts   # Real-time SSE TransformStream & delta deduplication
+    ├── stores/
+    │   └── signature-store.ts # In-memory signature & thought buffer stores
+    ├── transform/
+    │   ├── claude.ts        # Claude detection & transforms
+    │   ├── gemini.ts        # Gemini transforms
+    │   ├── model-resolver.ts# Model tier & collapsed family resolution
+    │   ├── cross-model-sanitizer.ts # Cross-model signature stripping
+    │   └── prompt-signature.ts      # OpenCode Code Mode signature neutralization
     ├── accounts.ts          # Multi-account management
     ├── server.ts            # OAuth callback server
     └── debug.ts             # Debug logging
@@ -54,36 +68,39 @@ src/
 
 ## Request Flow
 
-### 1. Interception (`plugin.ts`)
+### 1. Interception (`v2.ts` / `plugin.ts`)
 
 ```typescript
 fetch() intercepted → isGenerativeLanguageRequest() → prepareAntigravityRequest()
 ```
 
-- Account selection (round-robin, rate-limit aware)
+- Account selection (hybrid / sticky / round-robin, rate-limit & soft-quota aware)
 - Token refresh if expired
-- Endpoint selection (Antigravity on daily host; Gemini CLI on production)
+- Endpoint selection (Antigravity on `daily-cloudcode-pa.googleapis.com`; Gemini CLI on `cloudcode-pa.googleapis.com`)
 
 ### 2. Request Transformation (`request.ts`)
 
 | Step | What Happens |
 |------|--------------|
-| Model detection | Detect Claude/Gemini from URL |
-| Thinking config | Add `thinkingConfig` for thinking models |
-| Thinking strip | Remove ALL thinking blocks (Claude) |
+| Model detection | Resolve collapsed families, tiers (`minimal`/`low`/`medium`/`high`/`xhigh`), and Claude/Gemini family |
+| Thinking config | Extract `thinkingConfig` (defaulting `includeThoughts: true` on OpenCode V2 variants) and format for Gemini 3/4 (`thinkingLevel`), Gemini 2.5 (`thinkingBudget`), or Claude (`include_thoughts` / `thinking_budget` + `maxOutputTokens: 64000`) |
+| Thinking strip | Remove historical thinking blocks on Claude requests (unless `keep_thinking: true`) |
 | Tool normalization | Convert to `functionDeclarations[]` |
 | Schema cleaning | Remove unsupported JSON Schema fields |
 | ID assignment | Assign IDs to tool calls (FIFO matching) |
+| Prompt neutralization | Rewrite Code Mode signatures that trigger Google's daily-host 429 filter |
 | Wrap request | `{ project, model, request: {...} }` |
 
-### 3. Response Transformation (`request.ts`)
+### 3. Response Transformation (`request.ts`, `core/streaming/transformer.ts`)
 
 | Step | What Happens |
 |------|--------------|
-| SSE streaming | Real-time line-by-line TransformStream |
-| Signature caching | Cache `thoughtSignature` for display |
-| Format transform | `thought: true` → `type: "reasoning"` |
-| Envelope unwrap | Extract inner `response` object |
+| SSE streaming | Real-time line-by-line `TransformStream` |
+| Signature caching | Capture `thoughtSignature` for Claude tool-loop continuity |
+| Delta deduplication | Extract incremental deltas when backend sends cumulative thought text while preserving `thoughtSignature`-only chunks |
+| Part normalization | `transformResponseParts()` normalizes `functionCall.args` (`{}` fallback + JSON string parsing) and saves `inlineData` images for all models |
+| Model-specific thoughts | **Gemini**: native `{ thought: true, text, thoughtSignature }` passes through untouched to `@ai-sdk/google`. **Claude**: thought parts convert to `type: "reasoning"` with `providerMetadata.anthropic.signature` |
+| Envelope unwrap | Extract inner `response` object and attach `Retry-After` / `retry-after-ms` from `google.rpc.RetryInfo` on errors |
 
 ---
 
@@ -207,18 +224,23 @@ Contains OAuth refresh tokens - treat as sensitive.
 |----------|---------|
 | `OPENCODE_ANTIGRAVITY_DEBUG` | `1` or `2` for file debug logging |
 | `OPENCODE_ANTIGRAVITY_DEBUG_TUI` | `1` or `true` for TUI log panel debug output |
-| `OPENCODE_ANTIGRAVITY_QUIET` | Suppress toast notifications |
+| `OPENCODE_ANTIGRAVITY_CONSOLE_LOG` | `1` to mirror structured logs to stderr |
+| `OPENCODE_ANTIGRAVITY_OAUTH_BIND` | Override OAuth callback bind host (default `127.0.0.1`) |
+| `OPENCODE_CONFIG_DIR` | Override default `~/.config/opencode` config directory |
 
 `debug` and `debug_tui` are independent sinks: `debug` controls file logs, while `debug_tui` controls TUI logs.
 
 ### Config File
 
-Location: `~/.config/opencode/antigravity.json`
+Priority (lowest to highest):
+1. Machine: `%ProgramData%\opencode\antigravity.json` (Windows) / `/etc/opencode/antigravity.json` (Linux)
+2. User: `~/.config/opencode/antigravity.json` (all platforms, including Windows)
+3. Project: `.opencode/antigravity.json`
 
 ```json
 {
   "session_recovery": true,
-  "auto_resume": true,
+  "auto_resume": false,
   "resume_text": "continue",
   "keep_thinking": false
 }
@@ -233,17 +255,24 @@ Location: `~/.config/opencode/antigravity.json`
 | Function | Purpose |
 |----------|---------|
 | `prepareAntigravityRequest()` | Main request transformation |
-| `transformAntigravityResponse()` | SSE streaming, format conversion |
+| `transformAntigravityResponse()` | SSE streaming, error header extraction, response unwrapping |
 | `ensureThinkingBeforeToolUseInContents()` | Inject cached thinking |
-| `createStreamingTransformer()` | Real-time SSE processing |
+
+### `core/streaming/transformer.ts`
+
+| Function | Purpose |
+|----------|---------|
+| `createStreamingTransformer()` | Real-time SSE `TransformStream` |
+| `deduplicateThinkingText()` | Incremental thought delta extraction (preserving `thoughtSignature`) |
 
 ### `request-helpers.ts`
 
 | Function | Purpose |
 |----------|---------|
+| `extractThinkingConfig()` | Extract `thinkingConfig` (defaults `includeThoughts: true` when omitted) |
 | `deepFilterThinkingBlocks()` | Recursive thinking block removal |
 | `cleanJSONSchemaForAntigravity()` | Schema sanitization |
-| `transformThinkingParts()` | `thought` → `reasoning` format |
+| `transformResponseParts()` | Normalize `functionCall.args` & `inlineData`; convert Claude thinking parts |
 
 ### `thinking-recovery.ts`
 

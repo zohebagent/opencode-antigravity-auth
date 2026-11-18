@@ -1,6 +1,6 @@
 # Configuration
 
-Create `~/.config/opencode/antigravity.json` (or `.opencode/antigravity.json` in project root):
+Create `~/.config/opencode/antigravity.json` (or `.opencode/antigravity.json` in project root, or machine-wide `%ProgramData%\opencode\antigravity.json` on Windows / `/etc/opencode/antigravity.json` on Linux):
 
 ```json
 {
@@ -43,13 +43,15 @@ Settings that affect how the model thinks and responds.
 
 ### About `keep_thinking`
 
+`keep_thinking` only controls whether **Claude's** historical thinking blocks are sent back in subsequent turns — it does **not** control whether thinking/reasoning is displayed in OpenCode Desktop (reasoning display is always enabled for thinking models and controlled in Desktop's **Settings → General → Timeline**).
+
 When `true`, Claude's thinking blocks are preserved in conversation history:
 - **Pros:** Model remembers its reasoning, more coherent across turns
 - **Cons:** May degrade model stability, slightly larger context
 
-When `false` (default), thinking is stripped:
-- **Pros:** More stable model behavior, smaller context
-- **Cons:** Model may be less coherent, forgets previous reasoning
+When `false` (default), historical Claude thinking is stripped before the next turn:
+- **Pros:** More stable model behavior, smaller context, zero signature errors
+- **Cons:** Model generates fresh thinking each turn instead of reusing prior reasoning
 
 ---
 

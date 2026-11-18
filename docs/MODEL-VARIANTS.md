@@ -6,27 +6,36 @@ OpenCode's variant system lets you configure the thinking budget dynamically wit
 
 ## How Variants Work
 
-When you define a model with `variants`, OpenCode shows variant options in the model picker. Selecting a variant passes the `providerOptions` to the plugin, which extracts the thinking configuration.
+In OpenCode V2, the plugin automatically discovers your enabled accounts' Antigravity models and collapses multi-tier families (such as Gemini 3.8 Flash, Gemini 4 Argon/Carbon/Hydrogen, and Claude Opus/Sonnet 5.5) into single picker entries with built-in reasoning variants. Selecting a variant passes its `settings.thinkingConfig` overlay to the plugin, which defaults `includeThoughts` to `true` unless explicitly set to `false`.
 
 ```bash
-opencode run "Hello" --model=google/antigravity-claude-opus-4-6-thinking --variant=max
+opencode run "Hello" --model=google/antigravity-gemini-3.8-flash#medium
+opencode run "Hello" --model=google/antigravity-claude-opus-4-6-thinking#max
 ```
 
 ---
 
-## Variant Configuration
+## Variant Configuration (OpenCode V2)
 
-Define variants in your model configuration:
+You do not need to define models manually in OpenCode V2, but you can override variants under `providers.google.models`:
 
 ```json
 {
-  "antigravity-claude-opus-4-6-thinking": {
-    "name": "Claude Opus 4.6 Thinking",
-    "limit": { "context": 200000, "output": 64000 },
-    "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-    "variants": {
-      "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-      "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+  "providers": {
+    "google": {
+      "models": {
+        "antigravity-claude-opus-4-6-thinking": {
+          "capabilities": {
+            "tools": true,
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
+          "variants": [
+            { "id": "low", "settings": { "thinkingConfig": { "thinkingBudget": 8192 } } },
+            { "id": "max", "settings": { "thinkingConfig": { "thinkingBudget": 32768 } } }
+          ]
+        }
+      }
     }
   }
 }
@@ -40,24 +49,27 @@ The plugin accepts different variant formats depending on the model family:
 
 | Model Family | Variant Format | Example |
 |--------------|----------------|---------|
-| **Claude** | `thinkingConfig.thinkingBudget` | `{ "thinkingConfig": { "thinkingBudget": 8192 } }` |
-| **Gemini 3** | `thinkingLevel` | `{ "thinkingLevel": "high" }` |
+| **Claude (4.6 Thinking / 5.5 tiered)** | `thinkingConfig.thinkingBudget` | `{ "thinkingConfig": { "thinkingBudget": 32768 } }` |
+| **Gemini 3 / Gemini 4** | `thinkingConfig.thinkingLevel` | `{ "thinkingConfig": { "thinkingLevel": "high" } }` |
 | **Gemini 2.5** | `thinkingConfig.thinkingBudget` | `{ "thinkingConfig": { "thinkingBudget": 8192 } }` |
+
+> **Note:** You do not need to pass `includeThoughts: true` on each variant — the plugin enables `includeThoughts: true` automatically whenever a variant supplies `thinkingLevel` or `thinkingBudget`. Pass `includeThoughts: false` only if you want to suppress thought summaries explicitly.
 
 ---
 
-## Gemini 3 Thinking Levels
+## Gemini 3 & Gemini 4 Thinking Levels
 
-Gemini 3 models use string-based thinking levels. Available levels differ by model:
+Gemini 3 and Gemini 4 models use string-based thinking levels. Available levels differ by model:
 
-| Level | Flash | Pro | Description |
-|-------|-------|-----|-------------|
-| `minimal` | ✅ | ❌ | Minimal thinking, lowest latency |
-| `low` | ✅ | ✅ | Light thinking |
-| `medium` | ✅ | ❌ | Balanced thinking |
-| `high` | ✅ | ✅ | Maximum thinking (default) |
+| Level | Flash (3 / 3.8) | Pro (3 / 3.1) | Gemini 4 (Argon / Carbon / Hydrogen) | Description |
+|-------|-----------------|---------------|--------------------------------------|-------------|
+| `minimal` | ✅ | ❌ | ❌ | Minimal thinking, lowest latency |
+| `low` | ✅ | ✅ | ✅ | Light thinking |
+| `medium` | ✅ | ❌ | ✅ | Balanced thinking |
+| `high` | ✅ | ✅ | ✅ | Deep thinking |
+| `xhigh` ("Extra") | ❌ | ❌ | Hydrogen only | Extra-deep thinking |
 
-> **Note:** The API rejects invalid levels (e.g., `"minimal"` on Pro). Configure variants accordingly.
+> **Note:** The API rejects invalid levels (e.g., `"minimal"` on Pro). Non-standard effort labels advertised by Google (such as Hydrogen's `"Extra"`) route to the concrete backend tier ID while sending `{ includeThoughts: true }`.
 
 ### Gemini 3 Pro Example
 

@@ -19,8 +19,28 @@
 
 ### Fixed
 
+- Default `includeThoughts` to `true` in `extractThinkingConfig()` when OpenCode
+  V2 model variants provide `thinkingLevel` or `thinkingBudget` without an
+  explicit `includeThoughts` flag, while still honoring explicit `false` opt-outs.
+- Recognize Gemini 4 (`gemini-4-*`), `xhigh` / `"Extra"`, and tiered Claude 5.5
+  (`claude-opus-5-5-*`, `claude-sonnet-5-5-*`) as thinking-capable models and
+  emit `{ includeThoughts: true }` for non-standard Gemini 3/4 effort labels.
+- Remove cross-turn thinking hash dropping in the SSE transformer and preserve
+  native Google `{ thought: true, text, thoughtSignature }` parts for Gemini
+  while keeping `functionCall.args` normalization and `inlineData` image saving
+  active across both streaming and non-streaming responses.
+- Preserve `thoughtSignature`-only chunks during thinking delta deduplication
+  and avoid attaching Claude's `thinking` property onto Gemini thought parts.
+- Fix unreachable `google.rpc.RetryInfo` parsing in `transformAntigravityResponse`
+  so `Retry-After` and `retry-after-ms` headers are populated on 429/5xx errors.
 - Discovered models reuse the static definitions' input modalities, keeping
   text-only models such as GPT-OSS 120B from being advertised as image-capable.
+
+### Changed
+
+- Removed dead code, unused exports, stale tombstone comments, duplicate
+  `createThoughtBuffer` / `SENTINEL_SIGNATURE` definitions, and legacy Windows
+  `%APPDATA%` path drift in the auto-update checker.
 
 ## [2.1.2] - 2026-10-27
 
