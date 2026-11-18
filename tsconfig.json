@@ -16,6 +16,7 @@
     "typeRoots": ["./node_modules/@types"],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
 
     // Best practices

@@ -754,7 +754,8 @@ export async function saveAccounts(storage: AccountStorageV4): Promise<void> {
 
     try {
       await fs.writeFile(tempPath, content, { encoding: "utf-8", mode: 0o600 });
-      await fs.rename(tempPath, path);
+      await fs.copyFile(tempPath, path);
+      await fs.unlink(tempPath);
     } catch (error) {
       // Clean up temp file on failure to prevent accumulation
       try {
@@ -779,7 +780,8 @@ export async function updateAccounts(update: (storage: AccountStorageV4) => void
     const tempPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
     try {
       await fs.writeFile(tempPath, JSON.stringify(storage, null, 2), { encoding: "utf-8", mode: 0o600 });
-      await fs.rename(tempPath, path);
+      await fs.copyFile(tempPath, path);
+      await fs.unlink(tempPath);
     } catch (error) {
       try { await fs.unlink(tempPath); } catch { /* The temporary file may not exist. */ }
       throw error;
@@ -805,7 +807,8 @@ export async function saveAccountsReplace(storage: AccountStorageV4): Promise<vo
 
     try {
       await fs.writeFile(tempPath, content, { encoding: "utf-8", mode: 0o600 });
-      await fs.rename(tempPath, path);
+      await fs.copyFile(tempPath, path);
+      await fs.unlink(tempPath);
     } catch (error) {
       try {
         await fs.unlink(tempPath);

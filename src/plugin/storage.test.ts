@@ -239,6 +239,7 @@ vi.mock("node:fs", async () => {
       access: vi.fn().mockResolvedValue(undefined),
       unlink: vi.fn(),
       rename: vi.fn().mockResolvedValue(undefined),
+      copyFile: vi.fn().mockResolvedValue(undefined),
       appendFile: vi.fn(),
       chmod: vi.fn().mockResolvedValue(undefined),
     },
