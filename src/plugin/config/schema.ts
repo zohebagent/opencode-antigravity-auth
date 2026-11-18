@@ -3,10 +3,11 @@
  * 
  * Config file locations (in priority order, highest wins):
  * - Project: .opencode/antigravity.json
- * - User: ~/.config/opencode/antigravity.json (Linux/Mac)
- *         %APPDATA%\opencode\antigravity.json (Windows)
+ * - User: ~/.config/opencode/antigravity.json (all platforms, including Windows)
+ * - Machine: %ProgramData%\opencode\antigravity.json (Windows) / /etc/opencode/antigravity.json (Linux)
  * 
- * Environment variables always override config file values.
+ * Debug logging sinks also support environment overrides:
+ * OPENCODE_ANTIGRAVITY_DEBUG and OPENCODE_ANTIGRAVITY_DEBUG_TUI.
  */
 
 import { z } from "zod";
@@ -72,7 +73,6 @@ export const AntigravityConfigSchema = z.object({
   /** 
    * Suppress most toast notifications (rate limit, account switching, etc.)
    * Recovery toasts are always shown regardless of this setting.
-   * Env override: OPENCODE_ANTIGRAVITY_QUIET=1
    * @default false
    */
   quiet_mode: z.boolean().default(false),
@@ -85,7 +85,6 @@ export const AntigravityConfigSchema = z.object({
    * - `all`: All sessions show toasts including subagents and background tasks.
    * 
    * Debug logging captures all toasts regardless of this setting.
-   * Env override: OPENCODE_ANTIGRAVITY_TOAST_SCOPE=all
    * @default "root_only"
    */
   toast_scope: ToastScopeSchema.default('root_only'),
@@ -107,8 +106,7 @@ export const AntigravityConfigSchema = z.object({
   
   /**
    * Custom directory for debug logs.
-   * Env override: OPENCODE_ANTIGRAVITY_LOG_DIR=/path/to/logs
-   * @default OS-specific config dir + "/antigravity-logs"
+   * @default ~/.config/opencode/antigravity-logs
    */
   log_dir: z.string().optional(),
   
@@ -122,7 +120,6 @@ export const AntigravityConfigSchema = z.object({
    * When false (default): Thinking blocks are stripped for reliability.
    * When true: Full context preserved, but may encounter signature errors.
    * 
-   * Env override: OPENCODE_ANTIGRAVITY_KEEP_THINKING=1
    * @default false
    */
   keep_thinking: z.boolean().default(false),
@@ -289,7 +286,6 @@ export const AntigravityConfigSchema = z.object({
   
   /**
    * Strategy for selecting accounts when making requests.
-   * Env override: OPENCODE_ANTIGRAVITY_ACCOUNT_SELECTION_STRATEGY
    * @default "hybrid"
    */
   account_selection_strategy: AccountSelectionStrategySchema.default('hybrid'),
@@ -303,7 +299,6 @@ export const AntigravityConfigSchema = z.object({
    * When disabled (default), accounts start from the same index, which preserves
    * Anthropic's prompt cache across restarts (recommended for single-session use).
    * 
-   * Env override: OPENCODE_ANTIGRAVITY_PID_OFFSET_ENABLED=1
    * @default false
    */
   pid_offset_enabled: z.boolean().default(false),
@@ -323,7 +318,6 @@ export const AntigravityConfigSchema = z.object({
      * - `balance`: Switch account immediately on rate limit. Maximum availability.
      * - `performance_first`: Round-robin distribution for maximum throughput.
      * 
-     * Env override: OPENCODE_ANTIGRAVITY_SCHEDULING_MODE
      * @default "cache_first"
      */
     scheduling_mode: SchedulingModeSchema.default('cache_first'),

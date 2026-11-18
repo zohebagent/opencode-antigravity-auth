@@ -4,8 +4,9 @@
  * Loads config from files.
  * Priority (lowest to highest):
  * 1. Schema defaults
- * 2. User config file
- * 3. Project config file
+ * 2. Machine config file (%ProgramData%\opencode, /Library/Application Support/opencode, or /etc/opencode)
+ * 3. User config file (~/.config/opencode/antigravity.json)
+ * 4. Project config file (.opencode/antigravity.json)
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -158,20 +159,6 @@ export function loadConfig(directory: string): AntigravityConfig {
   }
 
   return config;
-}
-
-/**
- * Check if a config file exists at the given path.
- */
-export function configExists(path: string): boolean {
-  return existsSync(path);
-}
-
-/**
- * Get the default logs directory.
- */
-export function getDefaultLogsDir(): string {
-  return join(getConfigDir(), "antigravity-logs");
 }
 
 let runtimeConfig: AntigravityConfig | null = null;

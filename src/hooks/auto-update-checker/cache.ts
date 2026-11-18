@@ -84,8 +84,3 @@ export function invalidatePackage(packageName: string = PACKAGE_NAME): boolean {
     return false;
   }
 }
-
-export function invalidateCache(): boolean {
-  console.warn("[auto-update-checker] WARNING: invalidateCache is deprecated, use invalidatePackage");
-  return invalidatePackage();
-}

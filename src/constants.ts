@@ -104,9 +104,6 @@ export function setAntigravityVersion(version: string): void {
   versionLocked = true;
 }
 
-/** @deprecated Use getAntigravityVersion() for runtime access. */
-export const ANTIGRAVITY_VERSION = ANTIGRAVITY_VERSION_FALLBACK;
-
 /**
  * Antigravity Hub User-Agent, e.g.
  * `antigravity/hub/2.24.0 (aidev_client; os_type=darwin; arch=arm64; cl=1000335682)`.
@@ -134,11 +131,6 @@ export function getAntigravityHeaders(): HeaderSet {
     "User-Agent": getAntigravityUserAgent(),
   };
 }
-
-/** @deprecated Use getAntigravityHeaders() for runtime access. */
-export const ANTIGRAVITY_HEADERS = {
-  "User-Agent": getAntigravityUserAgent(ANTIGRAVITY_VERSION_FALLBACK),
-} as const;
 
 export const GEMINI_CLI_HEADERS = {
   "User-Agent": "google-api-nodejs-client/9.15.1",
@@ -223,33 +215,14 @@ export const EMPTY_SCHEMA_PLACEHOLDER_DESCRIPTION = "Placeholder. Always pass tr
 export const SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator";
 
 // ============================================================================
-// ANTIGRAVITY SYSTEM INSTRUCTION (Ported from CLIProxyAPI v6.6.89)
-// ============================================================================
-
-/**
- * System instruction for Antigravity requests.
- * This is injected into requests to match CLIProxyAPI v6.6.89 behavior.
- * The instruction provides identity and guidelines for the Antigravity agent.
- */
-// ============================================================================
 // GOOGLE SEARCH TOOL CONSTANTS
 // ============================================================================
 
 /**
  * Model used for Google Search grounding requests.
- * Uses gemini-2.5-flash for fast, cost-effective search operations. (3-flash is always at capacity and doesn't support souce citation).
+ * Uses gemini-2.5-flash for fast, cost-effective search operations. (3-flash is always at capacity and doesn't support source citation).
  */
 export const SEARCH_MODEL = "gemini-2.5-flash";
-
-/**
- * Thinking budget for deep search (more thorough analysis).
- */
-export const SEARCH_THINKING_BUDGET_DEEP = 16384;
-
-/**
- * Thinking budget for fast search (quick results).
- */
-export const SEARCH_THINKING_BUDGET_FAST = 4096;
 
 /**
  * Timeout for search requests in milliseconds (60 seconds).
@@ -273,6 +246,14 @@ Guidelines:
 - If information is uncertain or conflicting, acknowledge it
 - Focus on answering the user's question directly`;
 
+// ============================================================================
+// ANTIGRAVITY SYSTEM INSTRUCTION (Ported from CLIProxyAPI v6.6.89)
+// ============================================================================
+
+/**
+ * System instruction injected into Antigravity requests to provide identity and
+ * guidelines for the Antigravity agent.
+ */
 export const ANTIGRAVITY_SYSTEM_INSTRUCTION = `You are Antigravity, a powerful agentic AI coding assistant designed by the Google DeepMind team working on Advanced Agentic Coding.
 You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.
 **Absolute paths only**

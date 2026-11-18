@@ -141,29 +141,3 @@ export function buildFingerprintHeaders(fingerprint: Fingerprint | null): Partia
     "User-Agent": getAntigravityUserAgent(),
   };
 }
-
-/**
- * Session-level fingerprint instance.
- * Generated once at module load, persists for the lifetime of the process.
- */
-let sessionFingerprint: Fingerprint | null = null;
-
-/**
- * Get or create the session fingerprint.
- * Returns the same fingerprint for all calls within a session.
- */
-export function getSessionFingerprint(): Fingerprint {
-  if (!sessionFingerprint) {
-    sessionFingerprint = generateFingerprint();
-  }
-  return sessionFingerprint;
-}
-
-/**
- * Regenerate the session fingerprint.
- * Call this to get a fresh identity (e.g., after rate limiting).
- */
-export function regenerateSessionFingerprint(): Fingerprint {
-  sessionFingerprint = generateFingerprint();
-  return sessionFingerprint;
-}

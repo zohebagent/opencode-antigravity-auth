@@ -23,14 +23,6 @@ export const THINKING_TIER_BUDGETS = {
 } as const;
 
 /**
- * Gemini 3 and Gemini 4 use thinkingLevel strings instead of numeric budgets.
- * Flash supports: minimal, low, medium, high
- * Pro supports: low, high (no minimal/medium)
- * Gemini 4 Hydrogen additionally supports xhigh (labelled "Extra" in Antigravity).
- */
-export const GEMINI_3_THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
-
-/**
  * Model aliases - maps user-friendly names to API model names.
  * 
  * Format:
@@ -105,15 +97,11 @@ const QUOTA_PREFIX_REGEX = /^antigravity-/i;
 const GEMINI_3_PRO_REGEX = /^gemini-3(?:\.\d+)?-pro/i;
 const GEMINI_3_FLASH_REGEX = /^gemini-3(?:\.\d+)?-flash/i;
 
-// ANTIGRAVITY_ONLY_MODELS removed - all models now default to antigravity
-
 /**
  * Image generation models - always route to Antigravity.
  * These models don't support thinking and require imageConfig.
  */
 const IMAGE_GENERATION_MODELS = /image|imagen/i;
-
-// Legacy LEGACY_ANTIGRAVITY_GEMINI3 regex removed - all Gemini models now default to antigravity
 
 /**
  * Models that support thinking tier suffixes.

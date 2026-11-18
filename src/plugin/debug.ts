@@ -1,7 +1,6 @@
 import { createWriteStream, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "node:process";
-import { homedir } from "node:os";
 import type { AntigravityConfig } from "./config";
 import {
   deriveDebugPolicy,
@@ -442,23 +441,6 @@ export function logToast(message: string, variant: "info" | "warning" | "success
 }
 
 /**
- * Logs retry attempt information.
- * @param maxAttempts - Use -1 for unlimited retries
- */
-export function logRetryAttempt(
-  attempt: number,
-  maxAttempts: number,
-  reason: string,
-  delayMs?: number,
-): void {
-  runWithDebugEnabled(() => {
-    const delayInfo = delayMs !== undefined ? ` delay=${delayMs}ms` : "";
-    const maxInfo = maxAttempts < 0 ? "∞" : maxAttempts.toString();
-    logDebug(`[Retry] Attempt ${attempt}/${maxInfo} reason=${reason}${delayInfo}`);
-  });
-}
-
-/**
  * Logs cache hit/miss information from response usage metadata.
  */
 export function logCacheStats(
@@ -505,23 +487,5 @@ export function logQuotaFetch(
     const countInfo = accountCount !== undefined ? ` accounts=${accountCount}` : "";
     const detailsInfo = details ? ` ${details}` : "";
     logDebug(`[QuotaFetch] ${event.toUpperCase()}${countInfo}${detailsInfo}`);
-  });
-}
-
-/**
- * Logs which model is being used for a request.
- */
-export function logModelUsed(
-  requestedModel: string,
-  actualModel: string,
-  accountEmail?: string,
-): void {
-  runWithDebugEnabled(() => {
-    const accountInfo = accountEmail ? ` account=${accountEmail}` : "";
-    if (requestedModel !== actualModel) {
-      logDebug(`[Model] requested=${requestedModel} actual=${actualModel}${accountInfo}`);
-    } else {
-      logDebug(`[Model] ${actualModel}${accountInfo}`);
-    }
   });
 }

@@ -164,7 +164,3 @@ async function showLocalDevToast(client: PluginClient, version: string): Promise
     .catch(() => {});
   logAutoUpdate(`Local dev toast shown: v${version}`);
 }
-
-export type { UpdateCheckResult, AutoUpdateCheckerOptions } from "./types";
-export { checkForUpdate, getCachedVersion, getLatestVersion } from "./checker";
-export { invalidatePackage, invalidateCache } from "./cache";

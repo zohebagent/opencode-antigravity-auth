@@ -65,12 +65,6 @@ import type {
 const MAX_OAUTH_ACCOUNTS = 10;
 const MAX_WARMUP_SESSIONS = 1000;
 const MAX_WARMUP_RETRIES = 2;
-const CAPACITY_BACKOFF_TIERS_MS = [5000, 10000, 20000, 30000, 60000];
-
-function getCapacityBackoffDelay(consecutiveFailures: number): number {
-  const index = Math.min(consecutiveFailures, CAPACITY_BACKOFF_TIERS_MS.length - 1);
-  return CAPACITY_BACKOFF_TIERS_MS[Math.max(0, index)] ?? 5000;
-}
 const warmupAttemptedSessionIds = new Set<string>();
 const warmupSucceededSessionIds = new Set<string>();
 
@@ -1152,18 +1146,6 @@ function resetRateLimitState(accountIndex: number, quotaKey: string): void {
   rateLimitStateByAccountQuota.delete(stateKey);
 }
 
-/**
- * Reset all rate limit state for an account (all quotas).
- * Used when account is completely healthy.
- */
-function resetAllRateLimitStateForAccount(accountIndex: number): void {
-  for (const key of rateLimitStateByAccountQuota.keys()) {
-    if (key.startsWith(`${accountIndex}:`)) {
-      rateLimitStateByAccountQuota.delete(key);
-    }
-  }
-}
-
 function headerStyleToQuotaKey(headerStyle: HeaderStyle, family: ModelFamily): string {
   if (family === "claude") return "claude";
   return headerStyle === "antigravity" ? "gemini-antigravity" : "gemini-cli";
@@ -1459,13 +1441,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
         return {};
       }
 
-      // Validate that stored accounts are in sync with OpenCode's auth
-      // If OpenCode's refresh token doesn't match any stored account, clear stale storage
-      const authParts = parseRefreshParts(auth.refresh);
-      const storedAccounts = await loadAccounts();
-      
-      // Note: AccountManager now ensures the current auth is always included in accounts
-
+      // AccountManager ensures the current auth is always included in accounts
       const accountManager = await AccountManager.loadFromDisk(auth, runtimeVersion === 2);
       if (runtimeVersion === 2) accountManager.useManagedStorage();
       const abandonManager = async (): Promise<never> => {
@@ -1623,7 +1599,6 @@ export const createAntigravityPlugin = (providerId: string) => async (
             const accountCount = accountManager.getEnabledAccounts().filter(eligible).length;
             const routingDecision = resolveHeaderRoutingDecision(urlString, family, config);
             const {
-              cliFirst,
               preferredHeaderStyle,
               explicitQuota,
               allowQuotaFallback,
@@ -1972,7 +1947,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
             let headerStyle = preferredHeaderStyle;
             pushDebug(`headerStyle=${headerStyle} explicit=${explicitQuota}`);
             if (account.fingerprint) {
-              pushDebug(`fingerprint: quotaUser=${account.fingerprint.quotaUser} deviceId=${account.fingerprint.deviceId.slice(0, 8)}...`);
+              pushDebug(`fingerprint: deviceId=${account.fingerprint.deviceId.slice(0, 8)}...`);
             }
             
             // Check if this header style is rate-limited for this account
@@ -2124,7 +2099,6 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   }
 
                   const defaultRetryMs = (config.default_retry_after_seconds ?? 60) * 1000;
-                  const maxBackoffMs = (config.max_backoff_seconds ?? 60) * 1000;
                   const headerRetryMs = retryAfterMsFromResponse(response, defaultRetryMs);
                   const bodyInfo = await extractRetryInfoFromBody(response);
                   const serverRetryMs = bodyInfo.retryDelayMs ?? headerRetryMs;
@@ -3440,11 +3414,6 @@ function extractModelFromUrl(urlString: string): string | null {
   return match?.[1] ?? null;
 }
 
-function extractModelFromUrlWithSuffix(urlString: string): string | null {
-  const match = urlString.match(/\/models\/([^:\/\?]+)/);
-  return match?.[1] ?? null;
-}
-
 function getModelFamilyFromUrl(urlString: string): ModelFamily {
   const model = extractModelFromUrl(urlString);
   let family: ModelFamily = "gemini";
@@ -3506,7 +3475,7 @@ function getHeaderStyleFromUrl(
   if (family === "claude") {
     return "antigravity";
   }
-  const modelWithSuffix = extractModelFromUrlWithSuffix(urlString);
+  const modelWithSuffix = extractModelFromUrl(urlString);
   if (!modelWithSuffix) {
     return cliFirst ? "gemini-cli" : "antigravity";
   }
@@ -3515,7 +3484,7 @@ function getHeaderStyleFromUrl(
 }
 
 function isExplicitQuotaFromUrl(urlString: string): boolean {
-  const modelWithSuffix = extractModelFromUrlWithSuffix(urlString);
+  const modelWithSuffix = extractModelFromUrl(urlString);
   if (!modelWithSuffix) {
     return false;
   }

@@ -8,9 +8,6 @@
 export type {
   ModelFamily,
   ThinkingTier,
-  TransformContext,
-  TransformResult,
-  TransformDebugInfo,
   RequestPayload,
   ThinkingConfig,
   ResolvedModel,
@@ -29,7 +26,6 @@ export {
   getModelFamily,
   MODEL_ALIASES,
   THINKING_TIER_BUDGETS,
-  GEMINI_3_THINKING_LEVELS,
 } from "./model-resolver";
 export type { VariantConfig, CollapsedModelFamily, CollapsedModelTier, CollapsedModelTarget, DisplayReasoningLabel } from "./model-resolver";
 
@@ -66,7 +62,6 @@ export type { GeminiTransformOptions, GeminiTransformResult, ImageConfig } from 
 export {
   sanitizeCrossModelPayload,
   sanitizeCrossModelPayloadInPlace,
-  getModelFamily as getCrossModelFamily,
   stripGeminiThinkingMetadata,
   stripClaudeThinkingFields,
 } from "./cross-model-sanitizer";

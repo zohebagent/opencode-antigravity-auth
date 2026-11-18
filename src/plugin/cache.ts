@@ -245,11 +245,3 @@ export function clearSignatureCache(sessionId?: string): void {
     // since entries have TTL and will expire naturally.
   }
 }
-
-// ============================================================================
-// Disk-Persistent Signature Cache (re-export from cache/ folder)
-// ============================================================================
-
-// Re-export SignatureCache class and factory for direct use
-export { SignatureCache, createSignatureCache } from "./cache/signature-cache";
-export type { SignatureCacheConfig } from "./config";

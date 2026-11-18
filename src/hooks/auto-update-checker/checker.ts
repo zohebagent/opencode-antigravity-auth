@@ -7,7 +7,6 @@ import {
   NPM_REGISTRY_URL,
   NPM_FETCH_TIMEOUT,
   INSTALLED_PACKAGE_JSON,
-  USER_CONFIG_DIR,
   USER_OPENCODE_CONFIG,
   USER_OPENCODE_CONFIG_JSONC,
 } from "./constants";
@@ -30,8 +29,6 @@ function getConfigPaths(directory: string): string[] {
     path.join(directory, ".opencode.json"),
     USER_OPENCODE_CONFIG,
     USER_OPENCODE_CONFIG_JSONC,
-    path.join(process.env.XDG_CONFIG_HOME ?? path.join(path.dirname(USER_CONFIG_DIR), ".config"), "opencode", "opencode.json"),
-    path.join(process.env.XDG_CONFIG_HOME ?? path.join(path.dirname(USER_CONFIG_DIR), ".config"), "opencode", "opencode.jsonc"),
   ];
 
   if (process.platform === "win32") {

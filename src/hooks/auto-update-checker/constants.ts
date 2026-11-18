@@ -21,9 +21,6 @@ export const INSTALLED_PACKAGE_JSON = path.join(
 );
 
 function getUserConfigDir(): string {
-  if (process.platform === "win32") {
-    return process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-  }
   return process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
 }
 
