@@ -22,7 +22,7 @@ pnpm run test:e2e:regression         # E2E: regression suite
 ```
 
 > **IMPORTANT — In-Flight Build Hazard:**
-> Never run `pnpm run build` while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Error: Plugin instance disposed`. When rebuilding `dist/`, switch to another provider model first or reload config & restart OpenCode after building.
+> Never run `pnpm run build` while OpenCode is actively running a turn on an Antigravity model. Overwriting `dist/` triggers OpenCode Desktop's file watcher to reload the plugin, disposing the active router instance and throwing `Antigravity plugin has been disposed`. Furthermore, OpenCode Desktop's Electron/Node process caches loaded plugin modules in memory — after rebuilding `dist/` outside an active turn, fully restart OpenCode Desktop so the freshly compiled bundle takes effect.
 
 No linter or formatter is configured. Style is enforced by convention (see below).
 
@@ -84,49 +84,64 @@ No linter or formatter is configured. Style is enforced by convention (see below
 ## Module Structure
 
 ```
+index.ts                     # Package entrypoint (OpenCode V2 default export + V1 server export)
 src/
-├── plugin.ts                # Main entry, fetch interceptor
-├── constants.ts             # Endpoints, headers, API config, system prompts
+├── v2.ts                    # OpenCode V2 plugin adapter, catalog registration, AI SDK 3 bridge
+├── tui.ts                   # /antigravity (/ag) TUI menu entrypoint
+├── quota-dialog.tsx         # Interactive scrollable quota dialog UI
+├── plugin.ts                # Core fetch interceptor, retry & multi-account loop
+├── constants.ts             # Endpoints, Hub headers, API config, system prompts
 ├── antigravity/oauth.ts     # OAuth token exchange
 └── plugin/
     ├── auth.ts              # Token validation & refresh
-    ├── request.ts           # Request transformation (core logic)
-    ├── request-helpers.ts   # Schema cleaning, thinking filters
+    ├── request.ts           # Request & response transformation (core logic)
+    ├── request-helpers.ts   # Schema cleaning, thinking config, response part normalization
     ├── thinking-recovery.ts # Turn boundary detection
-    ├── recovery.ts          # Session recovery (tool_result_missing)
-    ├── quota.ts             # Quota checking (API usage stats)
+    ├── recovery.ts          # Legacy V1 session recovery (tool_result_missing)
+    ├── quota.ts             # Quota checking (fetchAvailableModels + retrieveUserQuotaSummary)
     ├── cache.ts             # Auth & signature caching
     ├── accounts.ts          # Multi-account management & storage
-    ├── storage.ts           # Persistent storage schemas (Zod)
-    ├── fingerprint.ts       # Device fingerprint generation & headers
+    ├── storage.ts           # Persistent storage schemas (Zod, V1-V4 migration)
+    ├── fingerprint.ts       # Per-account device fingerprint persistence
     ├── project.ts           # Managed project context resolution
-    ├── transform/           # Prompt signature & model transformers
+    ├── config/              # Config schema, loader (machine/user/project), V2 model definitions
+    │   └── models-v2.ts     # Collapsed V2 model catalog & variant synthesis
+    ├── core/streaming/      # Real-time SSE TransformStream & delta deduplication
+    │   └── transformer.ts   # SSE line transform, signature capture, thought delta extraction
+    ├── stores/
+    │   └── signature-store.ts # Session signature & thought buffer stores
+    ├── transform/           # Prompt signature, cross-model & model transformers
     │   ├── prompt-signature.ts # Neutralizes OpenCode Code Mode signatures (#622)
     │   ├── gemini.ts        # Gemini payload transformation
-    │   ├── claude.ts        # Claude payload transformation
-    │   └── model-resolver.ts# Model tier and variant resolution
-    └── debug.ts             # Debug logging utilities
+    │   ├── claude.ts        # Claude payload transformation & thinking detection
+    │   └── model-resolver.ts# Model tier, collapsed family & variant resolution
+    └── debug.ts             # Debug file & TUI logging utilities
 ```
 
 ## Key Design Patterns
 
 ### 1. Request Interception
-Plugin intercepts `fetch()` for `generativelanguage.googleapis.com`, transforms to Antigravity format. Two header styles: `antigravity` (Electron-style UA + fingerprint) and `gemini-cli` (nodejs-client UA).
+Plugin intercepts `fetch()` for `generativelanguage.googleapis.com`, transforms to Antigravity format. Two header styles: `antigravity` (Hub `User-Agent` on `daily-cloudcode-pa.googleapis.com`) and `gemini-cli` (Code Assist headers on `cloudcode-pa.googleapis.com`).
 
-### 2. Claude Thinking Blocks
-ALL thinking blocks are stripped from outgoing requests for Claude models. Claude generates fresh thinking each turn. This eliminates signature validation errors.
+### 2. Thinking & Reasoning Pipeline (OpenCode V2)
+- **Outbound `includeThoughts` Defaulting**: OpenCode V2 variants pass `thinkingConfig: { thinkingLevel }` or `{ thinkingBudget }` without an explicit `includeThoughts` boolean. `extractThinkingConfig()` in `src/plugin/request-helpers.ts` MUST default `includeThoughts` to `true` when omitted, while respecting explicit `includeThoughts: false` / `include_thoughts: false`.
+- **Model Family Coverage**: `isThinkingCapableModel()`, `isClaudeThinkingModel()`, and `resolveModelWithTier()` recognize Gemini 3/4 (`gemini-3-*`, `gemini-4-*`, including `xhigh` / `"Extra"`), Claude `-thinking`, and tiered Claude 5.5 (`claude-opus-5-5-*`, `claude-sonnet-5-5-*`). Non-standard Gemini 3/4 effort labels (such as `extra`) omit `thinkingLevel` while keeping `{ includeThoughts: true }`.
+- **Gemini Native SSE vs Claude Conversion**: `transformResponseParts()` runs `functionCall.args` JSON normalization and `inlineData` image saving for ALL models (streaming and non-streaming), while thought conversion (`convertThoughts: true` -> `type: "reasoning"` + `providerMetadata.anthropic.signature`) runs ONLY for Claude. Gemini streams MUST keep native `{ thought: true, text, thoughtSignature }` parts untouched for `@ai-sdk/google`.
+- **Delta Deduplication**: `deduplicateThinkingText()` in `src/plugin/core/streaming/transformer.ts` preserves `thoughtSignature`-carrying chunks even when text delta is empty, and never injects Claude's `thinking` field onto Gemini parts. Cross-turn thought hash dropping was removed and must not be reintroduced.
+- **Claude Outbound Thinking Strip**: By default (`keep_thinking: false`), all historical thinking blocks are stripped from outgoing Claude requests so Claude generates fresh thinking each turn without signature errors.
+- **Desktop UI Display**: OpenCode Desktop's **Settings → General → Timeline** (`Thinking` → `Collapse` toggle) controls whether reasoning blocks render expanded or collapsed in the UI. The plugin must not interfere with native transcript grouping.
 
 ### 3. Session Recovery
-When tool execution is interrupted (ESC/timeout), the plugin injects synthetic `tool_result` blocks to recover the session without starting over.
+In V2, OpenCode owns session repair. In legacy V1, when tool execution is interrupted (ESC/timeout), `recovery.ts` injects synthetic `tool_result` blocks to recover the session without starting over.
 
 ### 4. Schema Sanitization
 Tool schemas are cleaned via allowlist. Unsupported fields (`const`, `$ref`, `$defs`) are removed or converted to Antigravity-compatible format.
 
 ### 5. Multi-Account Load Balancing
-Accounts rotate on rate limits. Gemini has dual quota pools (Antigravity headers + Gemini CLI headers). Fingerprints are per-account and regenerated on capacity exhaustion.
+Accounts rotate on rate limits. Gemini has dual quota pools (Antigravity + Gemini CLI). Both 5-hour (`fetchAvailableModels`) and weekly (`retrieveUserQuotaSummary`) quota buckets are evaluated.
 
-### 6. Fingerprint System
-Per-account device fingerprints stored in `antigravity-accounts.json`. Each fingerprint includes deviceId, sessionToken, userAgent, and a reduced clientMetadata (ideType, platform, pluginType — no osVersion, arch, or sqmId). The only header composed is `User-Agent`, built by `buildFingerprintHeaders()` in `fingerprint.ts` and applied on the antigravity request path in `request.ts`. History tracked (max 5), restorable.
+### 6. Fingerprint & Hub Identity
+Antigravity content requests send only the current Hub `User-Agent` (`getAntigravityUserAgent()`), omitting `X-Goog-Api-Client`, `Client-Metadata`, and `x-goog-user-project`. Per-account fingerprints remain stored in `antigravity-accounts.json` (max 5 history entries) for compatibility.
 
 ### 7. Prompt Signature Neutralization
 Google's daily host rejects requests containing the exact `tools["opencode"].session_move` Code Mode signature with a bare 429. The plugin neutralizes this signature to bracket property access (`tools["opencode"].`) in `systemInstruction` and `contents` before serialization, bypassing the filter while maintaining tool invocation capability.
