@@ -1,6 +1,5 @@
 import { getKeepThinking } from "./config";
 import { createLogger } from "./logger";
-import { cacheSignature } from "./cache";
 import {
   EMPTY_SCHEMA_PLACEHOLDER_NAME,
   EMPTY_SCHEMA_PLACEHOLDER_DESCRIPTION,
@@ -11,7 +10,7 @@ import type { GoogleSearchConfig } from "./transform/types";
 
 const log = createLogger("request-helpers");
 
-const ANTIGRAVITY_PREVIEW_LINK = "https://goo.gle/enable-preview-features"; // TODO: Update to Antigravity link if available
+const ANTIGRAVITY_PREVIEW_LINK = "https://goo.gle/enable-preview-features";
 
 // ============================================================================
 // JSON SCHEMA CLEANING FOR ANTIGRAVITY API
@@ -1456,11 +1455,43 @@ export function deepFilterThinkingBlocks(
 }
 
 /**
- * Transforms Gemini-style thought parts (thought: true) and Anthropic-style
- * thinking parts (type: "thinking") to reasoning format.
- * Claude responses through Antigravity may use candidates structure with Anthropic-style parts.
+ * Converts a Claude thinking part (either Gemini-wrapped `thought: true` or
+ * Anthropic `type: "thinking"`) into OpenCode's reasoning format and moves its
+ * signature to `providerMetadata.anthropic.signature`.
  */
-function transformGeminiCandidate(candidate: any): any {
+function convertThinkingPartToReasoning(
+  part: Record<string, unknown>,
+  thinkingText: string,
+  ensureThoughtFields: boolean,
+): Record<string, unknown> {
+  const transformed: Record<string, unknown> = ensureThoughtFields
+    ? { ...part, type: "reasoning", text: thinkingText, thought: true }
+    : { ...part, type: "reasoning" };
+
+  if (part.cache_control) {
+    transformed.cache_control = part.cache_control;
+  }
+
+  const sig = part.signature || part.thoughtSignature;
+  if (sig) {
+    transformed.providerMetadata = {
+      anthropic: { signature: sig },
+    };
+    delete transformed.signature;
+    delete transformed.thoughtSignature;
+  }
+
+  return transformed;
+}
+
+/**
+ * Normalizes a Gemini-style candidate's parts (`functionCall.args` JSON parsing
+ * and `inlineData` image saving). When `convertThoughts` is true (Claude models),
+ * also converts thought parts to OpenCode's Anthropic reasoning format.
+ * For native Gemini models, `convertThoughts` must be false so `@ai-sdk/google`
+ * receives unaltered `{ thought: true, text, thoughtSignature }` parts.
+ */
+function transformGeminiCandidate(candidate: any, convertThoughts: boolean): any {
   if (!candidate || typeof candidate !== "object") {
     return candidate;
   }
@@ -1476,55 +1507,22 @@ function transformGeminiCandidate(candidate: any): any {
       return part;
     }
 
-    // Handle Gemini-style: thought: true
-    if (part.thought === true) {
-      const thinkingText = part.text || "";
-      thinkingTexts.push(thinkingText);
-      const transformed: Record<string, unknown> = { ...part, type: "reasoning" };
-      if (part.cache_control) transformed.cache_control = part.cache_control;
-
-      // Convert signature to providerMetadata format for OpenCode
-      const sig = part.signature || part.thoughtSignature;
-      if (sig) {
-        transformed.providerMetadata = {
-          anthropic: { signature: sig }
-        };
-        delete (transformed as any).signature;
-        delete (transformed as any).thoughtSignature;
+    if (convertThoughts) {
+      if (part.thought === true) {
+        const thinkingText = part.text || "";
+        thinkingTexts.push(thinkingText);
+        return convertThinkingPartToReasoning(part, thinkingText, false);
       }
 
-      return transformed;
-    }
-
-    // Handle Anthropic-style in candidates: type: "thinking"
-    if (part.type === "thinking") {
-      const thinkingText = part.thinking || part.text || "";
-      thinkingTexts.push(thinkingText);
-      const transformed: Record<string, unknown> = {
-        ...part,
-        type: "reasoning",
-        text: thinkingText,
-        thought: true,
-      };
-      if (part.cache_control) transformed.cache_control = part.cache_control;
-
-      // Convert signature to providerMetadata format for OpenCode
-      const sig = part.signature || part.thoughtSignature;
-      if (sig) {
-        transformed.providerMetadata = {
-          anthropic: { signature: sig }
-        };
-        delete (transformed as any).signature;
-        delete (transformed as any).thoughtSignature;
+      if (part.type === "thinking") {
+        const thinkingText = part.thinking || part.text || "";
+        thinkingTexts.push(thinkingText);
+        return convertThinkingPartToReasoning(part, thinkingText, true);
       }
-
-      return transformed;
     }
 
-    // Handle functionCall: parse JSON strings in args and ensure args is always defined
-    // (Ported from LLM-API-Key-Proxy's _extract_tool_call)
-    // Fix: When Claude calls a tool with no parameters, args may be undefined.
-    // opencode expects state.input to be a record, so we must ensure args: {} as fallback.
+    // Parse JSON strings in functionCall.args and ensure args is always defined
+    // (OpenCode expects state.input to be a record, so default to {}).
     if (part.functionCall) {
       const parsedArgs = part.functionCall.args
         ? recursivelyParseJsonStrings(part.functionCall.args)
@@ -1538,7 +1536,7 @@ function transformGeminiCandidate(candidate: any): any {
       };
     }
 
-    // Handle image data (inlineData) - save to disk and return file path
+    // Save image data (inlineData) to disk and return file path
     if (part.inlineData) {
       const result = processImageData({
         mimeType: part.inlineData.mimeType,
@@ -1559,45 +1557,42 @@ function transformGeminiCandidate(candidate: any): any {
   };
 }
 
+export interface TransformResponsePartsOptions {
+  /**
+   * Convert `thought: true` / `type: "thinking"` parts into Anthropic
+   * `type: "reasoning"` + `providerMetadata.anthropic.signature`.
+   * Enable for Claude models; disable for Gemini models so `@ai-sdk/google`
+   * receives native `{ thought: true, text, thoughtSignature }` parts.
+   */
+  convertThoughts?: boolean;
+}
+
 /**
- * Transforms thinking/reasoning content in response parts to OpenCode's expected format.
- * Handles both Gemini-style (thought: true) and Anthropic-style (type: "thinking") formats.
- * Also extracts reasoning_content for Anthropic-style responses.
+ * Normalizes response parts (`functionCall.args` and `inlineData` images) for all
+ * models, and optionally converts Claude thinking parts into OpenCode's reasoning format.
  */
-export function transformThinkingParts(response: unknown): unknown {
+export function transformResponseParts(
+  response: unknown,
+  options: TransformResponsePartsOptions = {},
+): unknown {
   if (!response || typeof response !== "object") {
     return response;
   }
 
+  const convertThoughts = options.convertThoughts ?? true;
   const resp = response as Record<string, unknown>;
   const result: Record<string, unknown> = { ...resp };
   const reasoningTexts: string[] = [];
 
   // Handle Anthropic-style content array (type: "thinking")
-  if (Array.isArray(resp.content)) {
-    const transformedContent: any[] = [];
+  if (convertThoughts && Array.isArray(resp.content)) {
+    const transformedContent: unknown[] = [];
     for (const block of resp.content) {
-      if (block && typeof block === "object" && (block as any).type === "thinking") {
-        const thinkingText = (block as any).thinking || (block as any).text || "";
+      if (block && typeof block === "object" && (block as Record<string, unknown>).type === "thinking") {
+        const record = block as Record<string, unknown>;
+        const thinkingText = (record.thinking || record.text || "") as string;
         reasoningTexts.push(thinkingText);
-        const transformed: Record<string, unknown> = {
-          ...block,
-          type: "reasoning",
-          text: thinkingText,
-          thought: true,
-        };
-
-        // Convert signature to providerMetadata format for OpenCode
-        const sig = (block as any).signature || (block as any).thoughtSignature;
-        if (sig) {
-          transformed.providerMetadata = {
-            anthropic: { signature: sig }
-          };
-          delete (transformed as any).signature;
-          delete (transformed as any).thoughtSignature;
-        }
-
-        transformedContent.push(transformed);
+        transformedContent.push(convertThinkingPartToReasoning(record, thinkingText, true));
       } else {
         transformedContent.push(block);
       }
@@ -1607,7 +1602,9 @@ export function transformThinkingParts(response: unknown): unknown {
 
   // Handle Gemini-style candidates array
   if (Array.isArray(resp.candidates)) {
-    result.candidates = resp.candidates.map(transformGeminiCandidate);
+    result.candidates = resp.candidates.map((candidate) =>
+      transformGeminiCandidate(candidate, convertThoughts),
+    );
   }
 
   // Add reasoning_content if we found any thinking blocks (for Anthropic-style)
@@ -1616,6 +1613,14 @@ export function transformThinkingParts(response: unknown): unknown {
   }
 
   return result;
+}
+
+/**
+ * Transforms thinking/reasoning content in response parts to OpenCode's expected format.
+ * Handles both Gemini-style (thought: true) and Anthropic-style (type: "thinking") formats.
+ */
+export function transformThinkingParts(response: unknown): unknown {
+  return transformResponseParts(response, { convertThoughts: true });
 }
 
 /**
@@ -1878,30 +1883,6 @@ export function isEmptyResponseBody(text: string): boolean {
     // JSON parse error - treat as empty
     return true;
   }
-}
-
-/**
- * Checks if a streaming SSE response yielded zero meaningful chunks.
- * 
- * This is used after consuming a streaming response to determine if retry is needed.
- */
-export interface StreamingChunkCounter {
-  increment: () => void;
-  getCount: () => number;
-  hasContent: () => boolean;
-}
-
-export function createStreamingChunkCounter(): StreamingChunkCounter {
-  let count = 0;
-  let hasRealContent = false;
-
-  return {
-    increment: () => {
-      count++;
-    },
-    getCount: () => count,
-    hasContent: () => hasRealContent || count > 0,
-  };
 }
 
 /**
@@ -2291,50 +2272,6 @@ export function fixToolResponseGrouping(contents: any[]): any[] {
   }
   
   return newContents;
-}
-
-/**
- * Checks if contents have any tool call/response ID mismatches.
- * 
- * @param contents - Array of Gemini-style content messages
- * @returns Object with mismatch details
- */
-export function detectToolIdMismatches(contents: any[]): {
-  hasMismatches: boolean;
-  expectedIds: string[];
-  foundIds: string[];
-  missingIds: string[];
-  orphanIds: string[];
-} {
-  const expectedIds: string[] = [];
-  const foundIds: string[] = [];
-  
-  for (const content of contents) {
-    const parts = content.parts || [];
-    
-    for (const part of parts) {
-      if (part?.functionCall?.id) {
-        expectedIds.push(part.functionCall.id);
-      }
-      if (part?.functionResponse?.id) {
-        foundIds.push(part.functionResponse.id);
-      }
-    }
-  }
-  
-  const expectedSet = new Set(expectedIds);
-  const foundSet = new Set(foundIds);
-  
-  const missingIds = expectedIds.filter(id => !foundSet.has(id));
-  const orphanIds = foundIds.filter(id => !expectedSet.has(id));
-  
-  return {
-    hasMismatches: missingIds.length > 0 || orphanIds.length > 0,
-    expectedIds,
-    foundIds,
-    missingIds,
-    orphanIds,
-  };
 }
 
 // ============================================================================

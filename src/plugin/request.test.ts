@@ -30,7 +30,6 @@ const {
   hasSignedThinkingInMessages,
   generateSyntheticProjectId,
   MIN_SIGNATURE_LENGTH,
-  transformStreamingPayload,
   createStreamingTransformer,
   transformSseLine,
 } = __testExports;
@@ -448,30 +447,6 @@ describe("request.ts", () => {
       const line = `data: ${JSON.stringify(payload)}`;
       const result = callTransformSseLine(line);
       expect(result).toContain("data:");
-    });
-  });
-
-  describe("transformStreamingPayload", () => {
-    it("handles empty string", () => {
-      expect(transformStreamingPayload("")).toBe("");
-    });
-
-    it("handles single line without data prefix", () => {
-      expect(transformStreamingPayload("event: ping")).toBe("event: ping");
-    });
-
-    it("handles multiple lines", () => {
-      const input = "event: message\ndata: [DONE]\n";
-      const result = transformStreamingPayload(input);
-      expect(result).toContain("event: message");
-      expect(result).toContain("data: [DONE]");
-    });
-
-    it("preserves line structure", () => {
-      const input = "line1\nline2\nline3";
-      const result = transformStreamingPayload(input);
-      const lines = result.split("\n");
-      expect(lines.length).toBe(3);
     });
   });
 
@@ -1636,6 +1611,89 @@ it("removes x-api-key header", () => {
           },
         },
       });
+    });
+
+    it("preserves native Gemini thoughts while still normalizing functionCall args", async () => {
+      const ssePayload = `data: ${JSON.stringify({
+        response: {
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  { thought: true, text: "Reasoning step", thoughtSignature: "sig-gemini-123" },
+                  { functionCall: { name: "ping" } },
+                ],
+              },
+            },
+          ],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
+        },
+      })}\n\n`;
+      const response = new Response(ssePayload, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+
+      const transformed = await transformAntigravityResponse(
+        response,
+        true,
+        undefined,
+        "antigravity-gemini-3.8-flash",
+        mockProjectId,
+        "https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+        "gemini-3.8-flash-medium",
+        "session-1",
+      );
+
+      const text = await transformed.text();
+      const firstDataLine = text.split("\n").find((line) => line.startsWith("data: "));
+      expect(firstDataLine).toBeDefined();
+      const parsed = JSON.parse(firstDataLine!.slice(6));
+      expect(parsed.candidates[0].content.parts[0]).toEqual({
+        thought: true,
+        text: "Reasoning step",
+        thoughtSignature: "sig-gemini-123",
+      });
+      expect(parsed.candidates[0].content.parts[1]).toEqual({
+        functionCall: { name: "ping", args: {} },
+      });
+    });
+
+    it("extracts Retry-After and retry-after-ms headers from google.rpc.RetryInfo on 429 responses", async () => {
+      const response = new Response(
+        JSON.stringify({
+          error: {
+            code: 429,
+            message: "Quota exhausted",
+            status: "RESOURCE_EXHAUSTED",
+            details: [
+              {
+                "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                retryDelay: "3.2s",
+              },
+            ],
+          },
+        }),
+        {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        },
+      );
+
+      const transformed = await transformAntigravityResponse(
+        response,
+        false,
+        undefined,
+        "antigravity-gemini-3.8-flash",
+        mockProjectId,
+        "https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent",
+        "gemini-3.8-flash-medium",
+        "session-1",
+      );
+
+      expect(transformed.headers.get("Retry-After")).toBe("4");
+      expect(transformed.headers.get("retry-after-ms")).toBe("3200");
     });
   });
 });

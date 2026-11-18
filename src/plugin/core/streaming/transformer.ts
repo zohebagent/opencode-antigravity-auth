@@ -4,44 +4,9 @@ import type {
   StreamingOptions,
   ThoughtBuffer,
 } from './types';
-import { processImageData } from '../../image-saver';
+import { createThoughtBuffer } from '../../stores/signature-store';
 
-export function createThoughtBuffer(): ThoughtBuffer {
-  const buffer = new Map<number, string>();
-  return {
-    get: (index: number) => buffer.get(index),
-    set: (index: number, text: string) => buffer.set(index, text),
-    clear: () => buffer.clear(),
-  };
-}
-
-export function transformStreamingPayload(
-  payload: string,
-  transformThinkingParts?: (response: unknown) => unknown,
-): string {
-  return payload
-    .split('\n')
-    .map((line) => {
-      if (!line.startsWith('data:')) {
-        return line;
-      }
-      const json = line.slice(5).trim();
-      if (!json) {
-        return line;
-      }
-      try {
-        const parsed = JSON.parse(json) as { response?: unknown };
-        if (parsed.response !== undefined) {
-          const transformed = transformThinkingParts
-            ? transformThinkingParts(parsed.response)
-            : parsed.response;
-          return `data: ${JSON.stringify(transformed)}`;
-        }
-      } catch (_) {}
-      return line;
-    })
-    .join('\n');
-}
+export { createThoughtBuffer };
 
 export function deduplicateThinkingText(
   response: unknown,
@@ -61,29 +26,26 @@ export function deduplicateThinkingText(
 
       const newParts = content.parts.map((part: unknown) => {
         const p = part as Record<string, unknown>;
-        
-        // Handle image data - save to disk and return file path
-        if (p.inlineData) {
-          const inlineData = p.inlineData as Record<string, unknown>;
-          const result = processImageData({
-            mimeType: inlineData.mimeType as string | undefined,
-            data: inlineData.data as string | undefined,
-          });
-          if (result) {
-            return { text: result };
-          }
-        }
-        
+
         if (p.thought === true || p.type === 'thinking') {
           const fullText = (p.text || p.thinking || '') as string;
           const sentText = sentBuffer.get(index) ?? '';
+          const hasSignature = Boolean(p.thoughtSignature || p.signature);
 
           if (fullText.startsWith(sentText)) {
             const delta = fullText.slice(sentText.length);
             sentBuffer.set(index, fullText);
 
             if (delta) {
-              return { ...p, text: delta, thinking: delta };
+              return p.type === 'thinking'
+                ? { ...p, text: delta, thinking: delta }
+                : { ...p, text: delta };
+            }
+            // Preserve signature-only chunks so thoughtSignature is never dropped.
+            if (hasSignature) {
+              return p.type === 'thinking'
+                ? { ...p, text: '', thinking: '' }
+                : { ...p, text: '' };
             }
             return null;
           }
@@ -112,6 +74,7 @@ export function deduplicateThinkingText(
       if (b?.type === 'thinking') {
         const fullText = (b.thinking || b.text || '') as string;
         const sentText = sentBuffer.get(thinkingIndex) ?? '';
+        const hasSignature = Boolean(b.signature || b.thoughtSignature);
 
         if (fullText.startsWith(sentText)) {
           const delta = fullText.slice(sentText.length);
@@ -120,6 +83,9 @@ export function deduplicateThinkingText(
 
           if (delta) {
             return { ...b, thinking: delta, text: delta };
+          }
+          if (hasSignature) {
+            return { ...b, thinking: '', text: '' };
           }
           return null;
         }
@@ -177,7 +143,6 @@ export function transformSseLine(
         response = callbacks.onInjectDebug(response, options.debugText);
         debugState.injected = true;
       }
-      // Note: onInjectSyntheticThinking removed - keep_thinking now uses debugText path
 
       const transformed = callbacks.transformThinkingParts
         ? callbacks.transformThinkingParts(response)

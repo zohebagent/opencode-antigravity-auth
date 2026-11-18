@@ -14,12 +14,10 @@ import { getKeepThinking } from "./config";
 import {
   createStreamingTransformer,
   transformSseLine,
-  transformStreamingPayload,
 } from "./core/streaming";
 import { defaultSignatureStore } from "./stores/signature-store";
 import {
   DEBUG_MESSAGE_PREFIX,
-  isDebugEnabled,
   isDebugTuiEnabled,
   logAntigravityDebugResponse,
   logCacheStats,
@@ -44,7 +42,7 @@ import {
   parseAntigravityApiBody,
   resolveThinkingConfig,
   rewriteAntigravityPreviewAccessError,
-  transformThinkingParts,
+  transformResponseParts,
   type AntigravityApiBody,
 } from "./request-helpers";
 import {
@@ -61,8 +59,6 @@ import { sanitizeCrossModelPayloadInPlace } from "./transform/cross-model-saniti
 import { sanitizeOpenCodePromptSignatureInPlace } from "./transform/prompt-signature";
 import { isGemini3Model, isImageGenerationModel, buildImageGenerationConfig, applyGeminiTransforms } from "./transform";
 import {
-  resolveModelWithTier,
-  resolveModelWithVariant,
   resolveModelForHeaderStyle,
   resolveCollapsedModelTarget,
   getCollapsedModelBaseId,
@@ -75,7 +71,6 @@ import {
 } from "./transform";
 import { detectErrorType } from "./recovery";
 import type { Fingerprint } from "./fingerprint";
-import type { GoogleSearchConfig } from "./transform/types";
 
 const log = createLogger("request");
 
@@ -443,11 +438,6 @@ function isGeminiThinkingPart(part: any): boolean {
   );
 }
 
-// Sentinel value used when signature recovery fails - allows Claude to handle gracefully
-// by redacting the thinking block instead of rejecting the request entirely.
-// Reference: LLM-API-Key-Proxy uses this pattern for Gemini 3 tool calls.
-const SENTINEL_SIGNATURE = "skip_thought_signature_validator";
-
 function getThinkingPartText(part: any): string {
   if (!part || typeof part !== "object") {
     return "";
@@ -501,11 +491,11 @@ function ensureThoughtSignature(part: any, sessionId: string): any {
   }
 
   if (part.thought === true) {
-    return { ...part, thoughtSignature: SENTINEL_SIGNATURE };
+    return { ...part, thoughtSignature: SKIP_THOUGHT_SIGNATURE };
   }
 
   if (part.type === "thinking" || part.type === "reasoning" || part.type === "redacted_thinking") {
-    return { ...part, signature: SENTINEL_SIGNATURE };
+    return { ...part, signature: SKIP_THOUGHT_SIGNATURE };
   }
 
   return part;
@@ -517,7 +507,7 @@ function hasSignedThinkingPart(part: any, sessionId?: string): boolean {
   }
 
   if (part.thought === true) {
-    if (part.thoughtSignature === SENTINEL_SIGNATURE || part.thoughtSignature === SKIP_THOUGHT_SIGNATURE) {
+    if (part.thoughtSignature === SKIP_THOUGHT_SIGNATURE) {
       return true;
     }
 
@@ -533,7 +523,7 @@ function hasSignedThinkingPart(part: any, sessionId?: string): boolean {
   }
 
   if (part.type === "thinking" || part.type === "reasoning" || part.type === "redacted_thinking") {
-    if (part.signature === SENTINEL_SIGNATURE || part.signature === SKIP_THOUGHT_SIGNATURE) {
+    if (part.signature === SKIP_THOUGHT_SIGNATURE) {
       return true;
     }
 
@@ -588,7 +578,7 @@ function ensureThinkingBeforeToolUseInContents(contents: any[], signatureSession
     const injected = {
       thought: true,
       text: lastThinking.text,
-      thoughtSignature: SENTINEL_SIGNATURE,
+      thoughtSignature: SKIP_THOUGHT_SIGNATURE,
     };
 
     return { ...content, parts: [injected, ...otherParts] };
@@ -796,8 +786,6 @@ export interface PrepareRequestOptions {
   claudeToolHardening?: boolean;
   /** Enable top-level Claude prompt auto-caching (`cache_control`). Default: false */
   claudePromptAutoCaching?: boolean;
-  /** Google Search configuration (global default) */
-  googleSearch?: GoogleSearchConfig;
   /**
    * Per-account fingerprint. Kept for API compatibility: Antigravity requests always send
    * the current Hub User-Agent, never a stored fingerprint userAgent.
@@ -1454,7 +1442,7 @@ export function prepareAntigravityRequest(
             // Gemini-specific tool normalization and feature injection
             const geminiResult = applyGeminiTransforms(requestPayload, {
               model: effectiveModel,
-              normalizedThinking: undefined, // Thinking config already applied above (lines 816-880)
+              normalizedThinking: undefined, // Thinking config is applied earlier in prepareAntigravityRequest
               tierThinkingBudget,
               tierThinkingLevel: tierThinkingLevel as ThinkingTier | undefined,
             });
@@ -1850,19 +1838,20 @@ export async function transformAntigravityResponse(
       note: "Streaming SSE response (real-time transform)",
     });
 
+    const transformResponse = (payload: unknown) =>
+      transformResponseParts(payload, { convertThoughts: isClaude });
+
     const streamingTransformer = createStreamingTransformer(
       defaultSignatureStore,
       {
         onCacheSignature: cacheSignature,
         onInjectDebug: injectDebugThinking,
-        // onInjectSyntheticThinking removed - keep_thinking now uses debugText path
-        transformThinkingParts: isClaude ? transformThinkingParts : undefined,
+        transformThinkingParts: transformResponse,
       },
       {
         signatureSessionKey: sessionId,
         debugText,
         cacheSignatures,
-        // injectSyntheticThinking removed - keep_thinking now unified with debug via debugText
       },
     );
     return new Response(response.body.pipeThrough(streamingTransformer), {
@@ -1884,6 +1873,25 @@ export async function transformAntigravityResponse(
         errorBody = JSON.parse(text);
       } catch {
         errorBody = { error: { message: text } };
+      }
+
+      if (errorBody?.error?.details && Array.isArray(errorBody.error.details)) {
+        const retryInfo = errorBody.error.details.find(
+          (detail: any) => detail['@type'] === 'type.googleapis.com/google.rpc.RetryInfo'
+        );
+
+        if (retryInfo?.retryDelay) {
+          const match = retryInfo.retryDelay.match(/^([\d.]+)s$/);
+          if (match && match[1]) {
+            const retrySeconds = parseFloat(match[1]);
+            if (!isNaN(retrySeconds) && retrySeconds > 0) {
+              const retryAfterSec = Math.ceil(retrySeconds).toString();
+              const retryAfterMs = Math.ceil(retrySeconds * 1000).toString();
+              headers.set('Retry-After', retryAfterSec);
+              headers.set('retry-after-ms', retryAfterMs);
+            }
+          }
+        }
       }
 
       // Inject Debug Info
@@ -1931,25 +1939,6 @@ export async function transformAntigravityResponse(
           statusText: response.statusText,
           headers
         });
-      }
-
-      if (errorBody?.error?.details && Array.isArray(errorBody.error.details)) {
-        const retryInfo = errorBody.error.details.find(
-          (detail: any) => detail['@type'] === 'type.googleapis.com/google.rpc.RetryInfo'
-        );
-
-        if (retryInfo?.retryDelay) {
-          const match = retryInfo.retryDelay.match(/^([\d.]+)s$/);
-          if (match && match[1]) {
-            const retrySeconds = parseFloat(match[1]);
-            if (!isNaN(retrySeconds) && retrySeconds > 0) {
-              const retryAfterSec = Math.ceil(retrySeconds).toString();
-              const retryAfterMs = Math.ceil(retrySeconds * 1000).toString();
-              headers.set('Retry-After', retryAfterSec);
-              headers.set('retry-after-ms', retryAfterMs);
-            }
-          }
-        }
       }
     }
 
@@ -2009,7 +1998,7 @@ export async function transformAntigravityResponse(
       if (debugText) {
         responseBody = injectDebugThinking(responseBody, debugText);
       }
-      const transformed = isClaude ? transformThinkingParts(responseBody) : responseBody;
+      const transformed = transformResponseParts(responseBody, { convertThoughts: isClaude });
       return new Response(JSON.stringify(transformed), init);
     }
 
@@ -2052,6 +2041,5 @@ export const __testExports = {
   generateSyntheticProjectId,
   MIN_SIGNATURE_LENGTH,
   transformSseLine,
-  transformStreamingPayload,
   createStreamingTransformer,
 };

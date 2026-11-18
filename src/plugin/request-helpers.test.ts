@@ -8,6 +8,7 @@ import {
   filterUnsignedThinkingBlocks,
   filterMessagesThinkingBlocks,
   deepFilterThinkingBlocks,
+  transformResponseParts,
   transformThinkingParts,
   normalizeThinkingConfig,
   parseAntigravityApiBody,
@@ -892,6 +893,35 @@ describe("transformThinkingParts", () => {
     };
     const result = transformThinkingParts(response) as any;
     expect(result.candidates[0].content.parts[0].providerMetadata).toBeUndefined();
+  });
+
+  it("preserves native Gemini thought parts while normalizing functionCall args when convertThoughts is false", () => {
+    const response = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { thought: true, text: "native gemini thought", thoughtSignature: "sig_gemini" },
+              { functionCall: { name: "no_args_tool" } },
+              { functionCall: { name: "json_args_tool", args: { nested: '{"k":1}' } } },
+            ],
+          },
+        },
+      ],
+    };
+    const result = transformResponseParts(response, { convertThoughts: false }) as any;
+    expect(result.candidates[0].content.parts[0]).toEqual({
+      thought: true,
+      text: "native gemini thought",
+      thoughtSignature: "sig_gemini",
+    });
+    expect(result.candidates[0].reasoning_content).toBeUndefined();
+    expect(result.candidates[0].content.parts[1]).toEqual({
+      functionCall: { name: "no_args_tool", args: {} },
+    });
+    expect(result.candidates[0].content.parts[2]).toEqual({
+      functionCall: { name: "json_args_tool", args: { nested: { k: 1 } } },
+    });
   });
 });
 
@@ -1947,11 +1977,31 @@ describe("deduplicateThinkingText", () => {
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = deduplicateThinkingText(chunk, buffer) as any;
+    expect(result.candidates[0].content.parts[0]).toEqual({ thought: true, text: "Thinking" });
     expect(result.candidates[0].content.parts[1].text).toBe("Regular text");
     expect(result.candidates[0].content.parts[2].functionCall.name).toBe("test");
   });
 
+  it("preserves signature-only thought parts when text delta is empty", () => {
+    const buffer = createTestBuffer();
 
+    deduplicateThinkingText({
+      candidates: [{ content: { parts: [{ thought: true, text: "Reasoning" }] } }],
+    }, buffer);
+
+    const sigChunk = {
+      candidates: [{
+        content: {
+          parts: [{ thought: true, text: "Reasoning", thoughtSignature: "sig-final" }],
+        },
+      }],
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = deduplicateThinkingText(sigChunk, buffer) as any;
+    expect(result.candidates[0].content.parts).toEqual([
+      { thought: true, text: "", thoughtSignature: "sig-final" },
+    ]);
+  });
 });
 
 describe("recursivelyParseJsonStrings", () => {
